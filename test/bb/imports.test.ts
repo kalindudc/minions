@@ -111,7 +111,7 @@ describe("bb runtime import boundary", () => {
         /^@earendil-works\/pi-(ai|coding-agent|tui)$/,
         /^@sinclair\/typebox(\/value)?$/,
         /^@get-bb\/plugin-sdk\/testing(\/app)?$/,
-        /^@radix-ui\/react-(checkbox|dialog|slot)$/,
+        /^@radix-ui\/react-(checkbox|dialog|slot|tooltip)$/,
         /^@testing-library\/react$/,
         /^(class-variance-authority|clsx|react|react-dom|tailwind-merge|typescript|yaml)$/,
         /^vitest(\/config)?$/,

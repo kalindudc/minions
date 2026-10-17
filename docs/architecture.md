@@ -49,7 +49,7 @@ One `package.json` serves both hosts, because pi and bb each read the repository
 | `extensions/bb/server.ts` | Plugin entry: RPC contract, the five agent tools and per-thread tool selection |
 | `extensions/bb/spawn.ts` | Spawns child threads: persona, provider, model, reasoning, permission, environment and delegation depth |
 | `extensions/bb/state.ts` | Lists a thread's minions, checks ownership, stops, archives and messages them, and publishes live updates |
-| `extensions/bb/app.tsx` | Frontend entry: Minions tab, header chip and composer banner |
+| `extensions/bb/app.tsx` | Frontend entry: Minions tab and the composer's Minions button |
 | `extensions/bb/skills/minions/` | Guidance bb gives agents for nonblocking delegation |
 | `extensions/bb/components/`, `hooks/`, `lib/`, `components.json` | UI controls vendored from the bb scaffold, excluded from Biome so they stay close to the registry copies |
 

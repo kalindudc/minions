@@ -1,7 +1,6 @@
 import {
   definePluginApp,
   type PluginRpcClient,
-  type PluginThreadHeaderActionProps,
   type PluginThreadPanelProps,
   ThreadChat,
   useBbNavigate,
@@ -29,13 +28,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./components/ui/dialog";
+import { usePrefersReducedMotion } from "./components/ui/hooks/use-media-query";
 import { Icon } from "./components/ui/icon";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { cn } from "./lib/utils";
 import type { rpcContract } from "./server";
-import type { MinionRow } from "./state";
+import type { MinionCounts, MinionRow } from "./state";
 
 const ACTION_ID = "minions";
 const RUNNING = new Set(["active", "starting", "pending", "stopping"]);
+// Same frames as pi's DEFAULT_SPINNER_FRAMES; the extensions never import each other.
+const BLINK_FRAMES = [
+  "[oo]",
+  "[oo]",
+  "[oo]",
+  "[oo]",
+  "[o-]",
+  "[--]",
+  "[--]",
+  "[-o]",
+  "[oo]",
+  "[oo]",
+] as const;
+const BLINK_TICK_MS = 100;
 const FIELD_CLASS =
   "w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
@@ -126,6 +141,22 @@ function useRerenderEvery(intervalMs: number): void {
     const timer = setInterval(() => setTick((tick) => tick + 1), intervalMs);
     return () => clearInterval(timer);
   }, [intervalMs]);
+}
+
+function useBlinkFrame(active: boolean): string {
+  const reducedMotion = usePrefersReducedMotion();
+  const blinking = active && !reducedMotion;
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    if (!blinking) return;
+    setFrame(0);
+    const timer = setInterval(
+      () => setFrame((index) => (index + 1) % BLINK_FRAMES.length),
+      BLINK_TICK_MS,
+    );
+    return () => clearInterval(timer);
+  }, [blinking]);
+  return BLINK_FRAMES[blinking ? frame : 0];
 }
 
 function statusLabel(row: MinionRow): string {
@@ -516,33 +547,44 @@ function MinionsPanel({ threadId }: PluginThreadPanelProps) {
   );
 }
 
-function MinionsChip({ threadId, isCompactViewport }: PluginThreadHeaderActionProps) {
-  const navigate = useBbNavigate();
-  const identity = useThreadIdentity(threadId);
-  const counts = useMinionCounts(identity.data === null ? threadId : null);
-  const [openError, setOpenError] = useState<string | null>(null);
+const TONE_CLASS = {
+  default: "",
+  muted: "text-muted-foreground",
+  warning: "text-warning",
+} as const;
 
-  if (identity.data) {
-    const { parentThreadId, persona } = identity.data;
-    return (
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-7 px-2"
-        onClick={() => navigate.toThread(parentThreadId)}
-      >
-        <Icon name="Users" />
-        {persona} · minion
-      </Button>
-    );
-  }
-  const problem = openError ?? identity.error ?? counts.error;
-  if (counts.data === undefined) {
-    return <ErrorLine message={problem} className="max-w-48 truncate text-xs" />;
-  }
+type ButtonView = {
+  label: string;
+  lines: string[];
+  tone: keyof typeof TONE_CLASS;
+  blinking: boolean;
+  parentThreadId: string | null;
+};
 
-  const { running, waiting, done, failed } = counts.data;
-  const label = [
+function describeMinions(
+  identity: Identity | null | undefined,
+  counts: MinionCounts | undefined,
+): ButtonView {
+  if (identity) {
+    return {
+      label: `${identity.persona} · minion`,
+      lines: [`${identity.persona} minion`, "Click to open the parent thread"],
+      tone: "default",
+      blinking: false,
+      parentThreadId: identity.parentThreadId,
+    };
+  }
+  if (counts === undefined) {
+    return {
+      label: "Minions",
+      lines: ["Loading minions…"],
+      tone: "muted",
+      blinking: false,
+      parentThreadId: null,
+    };
+  }
+  const { running, waiting, done, failed } = counts;
+  const summary = [
     `${running} running`,
     waiting > 0 ? `${waiting} waiting` : null,
     `${done} done`,
@@ -550,66 +592,68 @@ function MinionsChip({ threadId, isCompactViewport }: PluginThreadHeaderActionPr
   ]
     .filter(Boolean)
     .join(" · ");
+  const empty = running + waiting + done + failed === 0;
+  let tone: ButtonView["tone"] = "default";
+  if (waiting > 0) tone = "warning";
+  else if (empty) tone = "muted";
+  return {
+    label: `Minions: ${summary}`,
+    lines: ["Minions", empty ? "No minions yet" : summary, "Click to open the Minions tab"],
+    tone,
+    blinking: running > 0,
+    parentThreadId: null,
+  };
+}
+
+function MinionsButton({ threadId }: { threadId: string }) {
+  const navigate = useBbNavigate();
+  const identity = useThreadIdentity(threadId);
+  const counts = useMinionCounts(identity.data === null ? threadId : null);
+  const [openError, setOpenError] = useState<string | null>(null);
+  const view = describeMinions(identity.data, counts.data);
+  const mark = useBlinkFrame(view.blinking);
+  const problem = openError ?? identity.error ?? counts.error;
+  const { parentThreadId } = view;
   const open = () => {
-    if (!navigate.openThreadPanel({ actionId: ACTION_ID })) {
+    if (parentThreadId !== null) {
+      navigate.toThread(parentThreadId);
+    } else if (!navigate.openThreadPanel({ actionId: ACTION_ID })) {
       setOpenError("bb could not open the Minions tab here.");
     }
   };
   return (
     <span className="inline-flex items-center gap-2">
-      <Button
-        size="sm"
-        variant="ghost"
-        className={cn(
-          "h-7 px-2",
-          running + waiting + done + failed === 0 && "text-muted-foreground",
-          waiting > 0 && "text-warning",
-        )}
-        aria-label={`Minions: ${label}`}
-        onClick={open}
-      >
-        <Icon name="Users" />
-        {isCompactViewport ? running : label}
-      </Button>
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              size="sm"
+              variant="ghost"
+              className={cn("h-8 px-2 font-mono text-xs", TONE_CLASS[view.tone])}
+              aria-label={view.label}
+              onClick={open}
+            >
+              <span aria-hidden="true">{mark}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {view.lines.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <ErrorLine message={problem} className="max-w-48 truncate text-xs" />
     </span>
   );
 }
 
-function MinionsBanner() {
+function MinionsAction() {
   const composer = useComposer();
-  const threadId = composer.scope.kind === "thread" ? composer.scope.threadId : null;
-  const counts = useMinionCounts(threadId);
-  const navigate = useBbNavigate();
-  const [openError, setOpenError] = useState<string | null>(null);
-  // A failed count shows nothing here; the Minions tab reports the error.
-  if (threadId === null || counts.error !== null || counts.data === undefined) return null;
-  const { running, waiting } = counts.data;
-  if (running === 0 && waiting === 0) return null;
-
-  const summary = [
-    running > 0 ? `${running} minion${running === 1 ? "" : "s"} running` : null,
-    waiting > 0
-      ? `${waiting}${running > 0 ? "" : ` minion${waiting === 1 ? "" : "s"}`} waiting for input`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
-  const open = () => {
-    if (!navigate.openThreadPanel({ actionId: ACTION_ID })) {
-      setOpenError("bb could not open the Minions tab here.");
-    }
-  };
-  return (
-    <div className="flex items-center gap-2 text-sm">
-      <Icon name="Users" className={cn("size-4", waiting > 0 && "text-warning")} />
-      <span className="min-w-0 flex-1 truncate">{summary}</span>
-      <ErrorLine message={openError} className="text-xs" />
-      <Button size="sm" variant="ghost" onClick={open}>
-        Open Minions
-      </Button>
-    </div>
-  );
+  if (composer.scope.kind !== "thread") return null;
+  const { threadId } = composer.scope;
+  // Keyed by thread so a thread switch starts with fresh state.
+  return <MinionsButton key={threadId} threadId={threadId} />;
 }
 
 export default definePluginApp((app) => {
@@ -620,14 +664,9 @@ export default definePluginApp((app) => {
     layout: "flush",
     component: MinionsPanel,
   });
-  app.slots.experimental_threadHeaderAction({
-    id: ACTION_ID,
-    title: "Minions",
-    component: MinionsChip,
-  });
   app.composer.customize({
     id: ACTION_ID,
     scopes: ["thread"],
-    banners: [{ id: "minions-active", component: MinionsBanner }],
+    actions: [{ id: "minions-status", component: MinionsAction }],
   });
 });

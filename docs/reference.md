@@ -132,15 +132,14 @@ halt({ id: "all" })
 
 ## Minions tab
 
-In bb, each thread shows its minions in the Minions tab, the header chip and the composer banner.
+In bb, each thread shows its minions in the Minions tab and in the Minions button in the composer.
 
 | Surface | What it does |
 |---|---|
-| Minions tab | Opened from the right panel's Actions list or the header chip. Lists each minion's persona, task, provider and model, status, elapsed time, quest progress and answer preview |
+| Minions tab | Opened from the right panel's Actions list or the Minions button. Lists each minion's persona, task, provider and model, status, elapsed time, quest progress and answer preview |
 | Minion detail | Selecting a minion shows its conversation, with Open (go to the thread), Message, Stop and Archive |
 | New minion | A form in the tab that starts one minion from a persona, a task and a shared or worktree environment |
-| Header chip | Reads `<n> running · <m> done` and opens the tab. In a minion thread it reads `<persona> · minion` and opens the parent thread |
-| Composer banner | Shown while the thread has minions running or waiting for input; opens the tab |
+| Minions button | `[oo]` in the composer toolbar, beside voice and send. Hovering shows the thread's running, waiting, done and failed counts, and clicking opens the tab. It blinks while a minion runs (unless the system asks for reduced motion), turns amber while one waits for input and is muted when the thread has none. In a minion thread, hovering names the persona and clicking opens the parent thread. bb hides it while the composer is collapsed to one line |
 
 Archived minions leave the list.
 

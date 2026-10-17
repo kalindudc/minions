@@ -226,7 +226,7 @@ export async function tellMinion(
   });
 }
 
-// Lifecycle events arrive in bursts and every open tab, chip and banner refetches on each signal,
+// Lifecycle events arrive in bursts and every open Minions tab and button refetches on each signal,
 // so a parent gets at most one signal per window, sent after the window's last change.
 export function createInvalidator(bb: Bb): (parentThreadId: string) => void {
   const pending = new Map<string, ReturnType<typeof setTimeout>>();

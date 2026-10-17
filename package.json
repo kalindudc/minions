@@ -78,6 +78,7 @@
     "@earendil-works/pi-tui": "^0.74.0",
     "@get-bb/plugin-sdk": "0.6.49",
     "@radix-ui/react-dialog": "^1.1.19",
+    "@radix-ui/react-tooltip": "^1.2.12",
     "@sinclair/typebox": "^0.34.0",
     "@testing-library/react": "^16.0.0",
     "@types/node": "^22.0.0",

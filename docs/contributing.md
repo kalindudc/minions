@@ -46,7 +46,7 @@ extensions/
     server.ts           # RPC, agent tools and tool selection
     spawn.ts            # child-thread spawning
     state.ts            # minion listing and actions
-    app.tsx             # Minions tab, header chip and banner
+    app.tsx             # Minions tab and composer button
     skills/minions/     # bb agent skill
     components/ hooks/ lib/ components.json   # vendored bb UI
 

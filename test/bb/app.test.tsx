@@ -4,8 +4,8 @@ import {
   type PluginRpcTestHandlers,
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
-import { act, fireEvent, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import type { rpcContract } from "../../extensions/bb/server.js";
 import type { MinionRow } from "../../extensions/bb/state.js";
 
@@ -60,23 +60,51 @@ async function renderPanel(rpc: PluginRpcTestHandlers<Contract>) {
   );
 }
 
-async function renderChip(
+async function renderButton(
   rpc: PluginRpcTestHandlers<Contract>,
   options: { threadId?: string; openThreadPanel?: () => boolean } = {},
 ) {
   const app = await loadApp();
-  const props = { threadId: options.threadId ?? PARENT, projectId: "p1", isCompactViewport: false };
-  return renderSlot(app.threadHeaderActions[0]!, props, {
-    rpc,
-    realtimeConnectionState: "connected",
-    ...(options.openThreadPanel ? { openThreadPanel: options.openThreadPanel } : {}),
-  });
+  return renderSlot(
+    app.composerCustomizations[0]!.actions![0]!,
+    {},
+    {
+      rpc,
+      realtimeConnectionState: "connected",
+      composer: { scope: { kind: "thread", threadId: options.threadId ?? PARENT } },
+      ...(options.openThreadPanel ? { openThreadPanel: options.openThreadPanel } : {}),
+    },
+  );
 }
 
-async function renderBanner(rpc: PluginRpcTestHandlers<Contract>) {
-  const app = await loadApp();
-  const banner = app.composerCustomizations[0]!.banners![0]!;
-  return renderSlot(banner, {}, { rpc, composer: { scope: { kind: "thread", threadId: PARENT } } });
+type Slot = Awaited<ReturnType<typeof renderButton>>;
+
+function hover(slot: Slot, button: HTMLElement) {
+  fireEvent.pointerMove(button, { pointerType: "mouse" });
+  return slot.findByRole("tooltip");
+}
+
+// bb's tooltip opens on focus only after a key press, as it does for keyboard users.
+function focusWithKeyboard(slot: Slot, button: HTMLElement) {
+  fireEvent.keyDown(document.body, { key: "Tab" });
+  act(() => button.focus());
+  return slot.findByRole("tooltip");
+}
+
+// One full pass through the blink frames, so a blink anywhere in the cycle is seen.
+const BLINK_CYCLE_MS = 1_000;
+
+// Each wait gets its own act() so React renders the frame before the next sample.
+async function marksShownFor(button: HTMLElement, ms: number): Promise<Set<string>> {
+  const seen = new Set([button.textContent ?? ""]);
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    await act(async () => {
+      await new Promise((settle) => setTimeout(settle, 25));
+    });
+    seen.add(button.textContent ?? "");
+  }
+  return seen;
 }
 
 const callsTo = (slot: { inspection: { rpcCalls: { method: string }[] } }, method: string) =>
@@ -94,16 +122,17 @@ function deferred<T>() {
 }
 
 describe("Minions app registration", () => {
-  it("registers a flush Minions tab, a header chip and a thread composer banner", async () => {
+  it("registers a flush Minions tab and a Minions button in the thread composer, and nothing in the header", async () => {
     const app = await loadApp();
 
     expect(app.threadPanelActions).toMatchObject([
       { id: "minions", title: "Minions", layout: "flush" },
     ]);
-    expect(app.threadHeaderActions).toMatchObject([{ id: "minions", title: "Minions" }]);
+    expect(app.threadHeaderActions).toEqual([]);
     expect(app.composerCustomizations).toMatchObject([
-      { id: "minions", scopes: ["thread"], banners: [{ id: "minions-active" }] },
+      { id: "minions", scopes: ["thread"], actions: [{ id: "minions-status" }] },
     ]);
+    expect(app.composerCustomizations[0]!.banners ?? []).toEqual([]);
   });
 });
 
@@ -319,18 +348,18 @@ describe("Minions tab", () => {
   });
 });
 
-describe("Minions header chip", () => {
+describe("Minions button", () => {
   it("counts running, waiting, done and failed minions separately and opens the Minions tab", async () => {
-    const slot = await renderChip(
+    const slot = await renderButton(
       handlers({ minionCounts: () => ({ running: 2, waiting: 1, done: 3, failed: 1 }) }),
     );
 
-    const chip = await slot.findByRole("button", {
+    const button = await slot.findByRole("button", {
       name: "Minions: 2 running · 1 waiting · 3 done · 1 failed",
     });
-    fireEvent.click(chip);
+    fireEvent.click(button);
 
-    expect(chip.className).toContain("text-warning");
+    expect(button.className).toContain("text-warning");
     expect(slot.inspection.navigateCalls).toEqual([
       { method: "openThreadPanel", options: { actionId: "minions" } },
     ]);
@@ -338,16 +367,16 @@ describe("Minions header chip", () => {
   });
 
   it("is muted when the thread has no minions and leaves out empty waiting and failed counts", async () => {
-    const slot = await renderChip(handlers());
+    const slot = await renderButton(handlers());
 
-    const chip = await slot.findByRole("button", { name: "Minions: 0 running · 0 done" });
+    const button = await slot.findByRole("button", { name: "Minions: 0 running · 0 done" });
 
-    expect(chip.className).toContain("text-muted-foreground");
-    expect(chip.className).not.toContain("text-warning");
+    expect(button.className).toContain("text-muted-foreground");
+    expect(button.className).not.toContain("text-warning");
   });
 
   it("shows that bb declined to open the Minions tab", async () => {
-    const slot = await renderChip(handlers(), { openThreadPanel: () => false });
+    const slot = await renderButton(handlers(), { openThreadPanel: () => false });
 
     fireEvent.click(await slot.findByRole("button", { name: /running/ }));
 
@@ -355,7 +384,7 @@ describe("Minions header chip", () => {
   });
 
   it("names the persona in a minion thread and goes back to its parent", async () => {
-    const slot = await renderChip(
+    const slot = await renderButton(
       handlers({ threadInfo: () => ({ persona: "researcher", parentThreadId: PARENT }) }),
       { threadId: "th_a" },
     );
@@ -368,7 +397,7 @@ describe("Minions header chip", () => {
 
   it("retries thread info when the connection comes back and clears the error once it succeeds", async () => {
     let fail = true;
-    const slot = await renderChip(
+    const slot = await renderButton(
       handlers({
         threadInfo: () => {
           if (fail) throw new Error("bb is restarting");
@@ -386,7 +415,7 @@ describe("Minions header chip", () => {
     expect(slot.queryByText("bb is restarting")).toBeNull();
   });
 
-  it("keeps separate state for each visible pane", async () => {
+  it("keeps separate state for each thread's composer", async () => {
     const rpc = handlers({
       minionCounts: ({ threadId }) =>
         threadId === "th_one"
@@ -394,50 +423,89 @@ describe("Minions header chip", () => {
           : { running: 0, waiting: 0, done: 2, failed: 0 },
     });
 
-    const one = await renderChip(rpc, { threadId: "th_one" });
-    const two = await renderChip(rpc, { threadId: "th_two" });
+    const one = await renderButton(rpc, { threadId: "th_one" });
+    const two = await renderButton(rpc, { threadId: "th_two" });
 
     expect(await one.findByRole("button", { name: "Minions: 1 running · 0 done" })).toBeTruthy();
     expect(await two.findByRole("button", { name: "Minions: 0 running · 2 done" })).toBeTruthy();
   });
-});
 
-describe("Minions composer banner", () => {
-  it("summarizes running and waiting minions from counts alone and opens the Minions tab", async () => {
-    const slot = await renderBanner(
-      handlers({ minionCounts: () => ({ running: 1, waiting: 1, done: 4, failed: 2 }) }),
+  it("summarizes the thread's minions on hover from counts alone", async () => {
+    const slot = await renderButton(
+      handlers({ minionCounts: () => ({ running: 2, waiting: 1, done: 3, failed: 1 }) }),
     );
 
-    expect(await slot.findByText("1 minion running, 1 waiting for input")).toBeTruthy();
-    fireEvent.click(slot.getByRole("button", { name: "Open Minions" }));
-    expect(slot.inspection.navigateCalls).toEqual([
-      { method: "openThreadPanel", options: { actionId: "minions" } },
-    ]);
+    const tooltip = await hover(slot, await slot.findByRole("button", { name: /^Minions: / }));
+
+    expect(within(tooltip).getByText("Minions")).toBeTruthy();
+    expect(within(tooltip).getByText("2 running · 1 waiting · 3 done · 1 failed")).toBeTruthy();
+    expect(within(tooltip).getByText("Click to open the Minions tab")).toBeTruthy();
     expect(listCalls(slot)).toBe(0);
   });
 
-  it("renders nothing when no minion is running or waiting", async () => {
-    const slot = await renderBanner(
-      handlers({ minionCounts: () => ({ running: 0, waiting: 0, done: 2, failed: 1 }) }),
+  it("says the thread has no minions yet when focused from the keyboard", async () => {
+    const slot = await renderButton(handlers());
+
+    const tooltip = await focusWithKeyboard(
+      slot,
+      await slot.findByRole("button", { name: "Minions: 0 running · 0 done" }),
     );
 
-    await waitFor(() => expect(callsTo(slot, "minionCounts")).toBe(1));
-    expect(slot.container.textContent).toBe("");
+    expect(within(tooltip).getByText("No minions yet")).toBeTruthy();
   });
 
-  it("renders nothing when counting fails, leaving the error to the Minions tab", async () => {
-    const slot = await renderBanner(
-      handlers({
-        minionCounts: () => {
-          throw new Error("bb is unreachable");
-        },
-      }),
+  it("names the persona and points to the parent thread on hover in a minion thread", async () => {
+    const slot = await renderButton(
+      handlers({ threadInfo: () => ({ persona: "researcher", parentThreadId: PARENT }) }),
+      { threadId: "th_a" },
     );
 
-    await waitFor(() => expect(callsTo(slot, "minionCounts")).toBe(1));
-    await act(async () => {
-      await new Promise((settle) => setTimeout(settle, 20));
+    const tooltip = await hover(slot, await slot.findByRole("button", { name: /researcher/ }));
+
+    expect(within(tooltip).getByText("researcher minion")).toBeTruthy();
+    expect(within(tooltip).getByText("Click to open the parent thread")).toBeTruthy();
+  });
+
+  it("blinks while a minion runs", async () => {
+    const slot = await renderButton(
+      handlers({ minionCounts: () => ({ running: 1, waiting: 0, done: 0, failed: 0 }) }),
+    );
+
+    const button = await slot.findByRole("button", { name: "Minions: 1 running · 0 done" });
+
+    await waitFor(() => expect(button.textContent).not.toBe("[oo]"), { timeout: 1500 });
+  });
+
+  it("stays still and turns amber while minions only wait for input", async () => {
+    const slot = await renderButton(
+      handlers({ minionCounts: () => ({ running: 0, waiting: 1, done: 0, failed: 0 }) }),
+    );
+
+    const button = await slot.findByRole("button", {
+      name: "Minions: 0 running · 1 waiting · 0 done",
     });
-    expect(slot.container.textContent).toBe("");
+
+    expect(await marksShownFor(button, BLINK_CYCLE_MS)).toEqual(new Set(["[oo]"]));
+    expect(button.className).toContain("text-warning");
+  });
+
+  it("stays still while a minion runs when the system asks for reduced motion", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)",
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    try {
+      const slot = await renderButton(
+        handlers({ minionCounts: () => ({ running: 1, waiting: 0, done: 0, failed: 0 }) }),
+      );
+      const button = await slot.findByRole("button", { name: "Minions: 1 running · 0 done" });
+
+      expect(await marksShownFor(button, BLINK_CYCLE_MS)).toEqual(new Set(["[oo]"]));
+      slot.lifecycle.unmount();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

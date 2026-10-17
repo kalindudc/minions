@@ -441,7 +441,7 @@ describe("Minions tab RPC", () => {
     expect(invalidations(harness).filter((p) => (p as any).threadId === PARENT_ID)).toHaveLength(1);
   });
 
-  it("counts this thread's minions for the chip and banner without reading any answer", async () => {
+  it("counts this thread's minions for the Minions button without reading any answer", async () => {
     addMinion(world, "th_a", { status: "active" });
     addMinion(world, "th_b", { status: "idle", thread: { hasPendingInteraction: true } });
     addMinion(world, "th_c", { status: "error" });
