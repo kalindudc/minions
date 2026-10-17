@@ -38,10 +38,12 @@ A mock on an internal function breaks when you refactor and tells you nothing ab
 
 ## File structure
 
-One test file per source file, mirroring the src path:
-- src/spawn.ts → test/spawn.test.ts
-- src/tools/spawn.ts → test/tools/spawn.test.ts
-- src/commands/halt.ts → test/commands/halt.ts
+One test file per source file, mirroring its path under the matching test root:
+- src/ (core) → test/core/: src/agents.ts → test/core/agents.test.ts
+- extensions/pi/ → test/pi/: extensions/pi/tools/spawn.ts → test/pi/tools/spawn.test.ts
+- extensions/bb/ → test/bb/: extensions/bb/server.ts → test/bb/server.test.ts
+
+Put each extension's helpers in its own `helpers/` folder (test/pi/helpers, test/bb/helpers). Repo-wide checks such as test/layout.test.ts sit at the test root.
 
 Merge when two test files cover the same source file.
 

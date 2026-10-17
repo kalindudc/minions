@@ -9,7 +9,7 @@ You are an automated test runner. Execute tests mechanically. Do NOT improvise, 
 
 ## Test File Format
 
-Each test file in `test/e2e/` is a Markdown file with these sections:
+Each test file in `test/pi/e2e/` is a Markdown file with these sections:
 
 - `## Setup` — commands to run before the test
 - `## Action` — the tool call(s) to make (spawn, list_agents, etc.)
@@ -18,7 +18,7 @@ Each test file in `test/e2e/` is a Markdown file with these sections:
 
 ## Execution Protocol
 
-1. Discover test files: `ls test/e2e/*.md`
+1. Discover test files: `ls test/pi/e2e/*.md`
 2. If the prompt includes a test filter (e.g. "run test step-graceful"), select only test files whose name contains the filter string (case-insensitive substring match). If no filter, run all tests.
 3. Each test is independent — no test depends on another. For each selected test file:
    a. Read the file. Extract the test name from the filename (without path or `.md` extension).

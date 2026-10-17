@@ -9,13 +9,13 @@ fi
 mkdir -p tmp/profiles
 
 echo "==> Running benchmark tests..."
-${PKG} exec vitest bench test/perf/ --run
+${PKG} exec vitest bench test/pi/perf/ --run
 
 echo "==> Running CPU profiling..."
-NODE_OPTIONS='--cpu-prof --cpu-prof-dir=./tmp/profiles' ${PKG} exec vitest bench test/perf/ --run
+NODE_OPTIONS='--cpu-prof --cpu-prof-dir=./tmp/profiles' ${PKG} exec vitest bench test/pi/perf/ --run
 
 echo "==> Running heap profiling..."
-NODE_OPTIONS='--heap-prof --heap-prof-dir=./tmp/profiles' ${PKG} exec vitest bench test/perf/ --run
+NODE_OPTIONS='--heap-prof --heap-prof-dir=./tmp/profiles' ${PKG} exec vitest bench test/pi/perf/ --run
 
 echo ""
 echo "Profiles saved to tmp/profiles/"

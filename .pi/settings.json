@@ -9,7 +9,7 @@
       "extensions": []
     }
   ],
-  "extensions": ["../src/index.ts"],
+  "extensions": ["../extensions/pi/index.ts"],
   "pi-minions": {
     "display": {
       "observabilityLines": 10

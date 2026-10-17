@@ -6,7 +6,8 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"ignoreUnknown": false
+		"ignoreUnknown": false,
+		"includes": ["**", "!extensions/bb/components", "!extensions/bb/hooks", "!extensions/bb/lib"]
 	},
 	"formatter": {
 		"enabled": true,

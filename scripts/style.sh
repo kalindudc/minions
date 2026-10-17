@@ -7,7 +7,7 @@ if command -v pnpm &>/dev/null; then
 fi
 
 echo "==> Running Biome linter and formatter..."
-${PKG} exec biome check --write --unsafe --no-errors-on-unmatched --error-on-warnings ./src ./test
+${PKG} exec biome check --write --unsafe --no-errors-on-unmatched --error-on-warnings ./src ./extensions ./test
 biome_exit=$?
 
 echo ""

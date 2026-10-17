@@ -8,12 +8,6 @@ The e2e suite uses markdown specs that a real LLM executes inside pi. Specs shou
 npm run test:e2e
 ```
 
-or in the local pnpm workflow:
-
-```bash
-pnpm run test:e2e
-```
-
 ## Spec structure
 
 Use this shape:

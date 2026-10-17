@@ -32,7 +32,7 @@ echo ""
 TEST_FILES=()
 while IFS= read -r -d '' file; do
   TEST_FILES+=("$file")
-done < <(find test/e2e -type f -name "*$FILTER*" -print0 | sort -z)
+done < <(find test/pi/e2e -type f -name "*$FILTER*" -print0 | sort -z)
 
 echo ""
 echo "  Found ${#TEST_FILES[@]} test(s):"
@@ -41,9 +41,9 @@ for f in "${TEST_FILES[@]}"; do
 done
 echo ""
 
-PROMPT="Load the e2e-runner skill. Execute test files in test/e2e/ in sorted order. Follow the skill instructions exactly. Write the JSON report when done."
+PROMPT="Load the e2e-runner skill. Execute test files in test/pi/e2e/ in sorted order. Follow the skill instructions exactly. Write the JSON report when done."
 if [[ -n "$FILTER" ]]; then
-  PROMPT="Load the e2e-runner skill. Run only the following tests: \`${TEST_FILES[*]}\`. Execute the test files in test/e2e/. Follow the skill instructions exactly. Write the JSON report when done."
+  PROMPT="Load the e2e-runner skill. Run only the following tests: \`${TEST_FILES[*]}\`. Execute the test files in test/pi/e2e/. Follow the skill instructions exactly. Write the JSON report when done."
 fi
 
 # use pi --list-models to prompt the user for a model
@@ -70,7 +70,7 @@ echo ""
 
 
 # Start pi in background — non-interactive, no session saved
-pi -e "$(pwd)/src/index.ts" -p "$PROMPT" -ns --skill "./.pi/skills/e2e-runner/" --model "$SELECTED_PROVIDER/$SELECTED_MODEL"  >/dev/null 2>&1 &
+pi -e "$(pwd)/extensions/pi/index.ts" -p "$PROMPT" -ns --skill "./.pi/skills/e2e-runner/" --model "$SELECTED_PROVIDER/$SELECTED_MODEL"  >/dev/null 2>&1 &
 PID=$!
 
 # Watch progress file with animated spinner

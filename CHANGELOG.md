@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- feat: run minions as bb child threads when pi-minions is installed as a bb plugin. Every bb provider gets nonblocking `spawn`, `list_agents`, `list_minions`, `show_minion` and `halt`, and bb delivers each minion's answer to its parent; foreground pi sessions are unchanged outside bb. See [reference](docs/reference.md#bb-tools).
+- feat: add a Minions tab, a thread header chip and a composer banner for managing a thread's minions in bb
+- feat: add the bb persona fields `provider`, `reasoning`, `permission`, `environment` and `delegate`
+- fix: an invalid persona file (malformed YAML or an invalid bb field) is skipped with a warning naming the file and reason, instead of breaking every named spawn; see [agents](docs/agents.md#invalid-persona-files)
+- fix: a task-level `model` override now selects that model for named agents, not only for ephemeral minions
+- chore: reorganize the repository: the shared persona engine lives in `src/`, the pi extension in `extensions/pi/` and the bb plugin in `extensions/bb/`, with tests mirrored under `test/core/`, `test/pi/` and `test/bb/`. See [architecture](docs/architecture.md#layout).
+
 ## [0.19.0] - 2026-06-18
 
 - feat: apply per-minion model overrides to minion sessions — resolve the spawn

@@ -19,27 +19,79 @@
   "publishConfig": {
     "access": "public"
   },
+  "engines": {
+    "bb": ">=0.46",
+    "bbPluginSdk": ">=0.6.49"
+  },
+  "bb": {
+    "name": "Minions",
+    "description": "Delegate work to bb child threads.",
+    "branding": {
+      "icon": "Users"
+    },
+    "server": "./extensions/bb/server.ts",
+    "app": "./extensions/bb/app.tsx",
+    "skills": [
+      "./extensions/bb/skills"
+    ]
+  },
   "pi": {
     "extensions": [
-      "./src/index.ts"
+      "./extensions/pi/index.ts"
     ]
   },
   "files": [
     "src/",
+    "extensions/pi/",
     "LICENSE.md"
   ],
+  "dependencies": {
+    "@radix-ui/react-checkbox": "^1.3.7",
+    "@radix-ui/react-slot": "^1.3.0",
+    "yaml": "^2.8.3",
+    "zod": "^4.6.5"
+  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
     "@sinclair/typebox": "*"
   },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    },
+    "@sinclair/typebox": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
     "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
     "@earendil-works/pi-tui": "^0.74.0",
+    "@get-bb/plugin-sdk": "0.6.49",
+    "@radix-ui/react-dialog": "^1.1.19",
     "@sinclair/typebox": "^0.34.0",
+    "@testing-library/react": "^16.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "better-sqlite3": "^12.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cron-parser": "^5.5.0",
+    "hono": "^4.11.9",
+    "jsdom": "^26.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.4.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   },
@@ -53,9 +105,9 @@
     "test:bench": "bash scripts/test-bench.sh",
     "typecheck": "tsc --noEmit",
     "style": "bash scripts/style.sh",
-    "style:check": "biome check ./src ./test",
-    "style:fix": "biome check --write --unsafe --no-errors-on-unmatched ./src ./test",
-    "format": "biome format --write --no-errors-on-unmatched ./src ./test",
+    "style:check": "biome check ./src ./extensions ./test",
+    "style:fix": "biome check --write --unsafe --no-errors-on-unmatched ./src ./extensions ./test",
+    "format": "biome format --write --no-errors-on-unmatched ./src ./extensions ./test",
     "cleanup": "bash scripts/cleanup.sh",
     "logs": "bash scripts/logs.sh",
     "profile": "bash scripts/profile.sh",

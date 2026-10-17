@@ -46,17 +46,13 @@ AgentTree:
 - add 1000 nodes: X ops/sec (Y ms) - STATUS
 - getTotalUsage: X ops/sec (Y ms) - STATUS
 
-ResultQueue:
-- add 10000 results: X ops/sec (Y ms) - STATUS
-- Memory: unbounded Map at src/queue.ts:10
-
 Logger:
 - 1000 messages: X ops/sec (Y ms) - STATUS
-- Sync I/O: appendFileSync at src/logger.ts:23
+- Sync I/O: appendFileSync at extensions/pi/logger.ts:23
 
 Spinner:
 - 80ms interval: ~62/sec - STATUS
-- Location: src/tools/spawn.ts:196
+- Location: extensions/pi/tools/spawn.ts:196
 
 ## Profile
 - Script time: X ms, GC: X ms (X%), Idle: X ms (X%)
@@ -86,10 +82,9 @@ Warning:
 
 ## Key Locations
 
-- Sync I/O: src/logger.ts:23
-- Unbounded Map: src/queue.ts:10
-- Spinner interval: src/tools/spawn.ts:196
-- O(n) aggregation: src/tree.ts:111
+- Sync I/O: extensions/pi/logger.ts:23
+- Spinner interval: extensions/pi/tools/spawn.ts:196
+- O(n) aggregation: extensions/pi/tree.ts:111
 
 ## Rules
 

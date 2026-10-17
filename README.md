@@ -11,8 +11,9 @@
 - `list_minions` and `show_minion` for current session visibility
 - `/minions` and `/minions show <id|name>` for live activity viewing
 - `learn_minions`, `/minions learn`, and `/minions skill` for built-in usage guidance
+- In bb: nonblocking child-thread minions for every provider, managed from a [Minions tab](docs/reference.md#minions-tab)
 
-Background minions, live detaching, and user steering commands are not part of the public surface.
+Outside bb, background minions, live detaching, and user steering commands are not part of the public surface. In bb, minions are nonblocking child threads that report results through bb; the Minions tab lets you manage them.
 
 ## Quick start
 
@@ -37,6 +38,19 @@ halt({ id: "all" })
 learn_minions({})
 ```
 
+## Use in bb
+
+This repository is also a bb plugin. Install it from Git, or from a local checkout after running `npm ci --ignore-scripts` in it. Do not install it from npm: the npm package contains only the pi extension, so `bb plugin install npm:pi-minions` would find no bb entry files.
+
+```text
+bb plugin install git:https://github.com/kalindudc/pi-minions
+bb plugin install path:/path/to/pi-minions
+```
+
+Update pi-minions in pi to the same version before you install the plugin. pi-minions 0.19.0 and earlier register tools with the same names as the plugin, and pi refuses to start a bb thread that loads both.
+
+In bb, every provider gets the [bb minion tools](docs/reference.md#bb-tools), personas accept [bb-only fields](docs/agents.md#bb-persona-fields), and pi sessions inside bb [hand their minion tools to the plugin](docs/reference.md#pi-inside-bb).
+
 ## Configuration
 
 ```json
@@ -57,6 +71,16 @@ learn_minions({})
   }
 }
 ```
+
+## Develop
+
+Install the dependencies with `npm install`. It also runs `prepare`, which checks the toolchain and sets this repository's git hooks. Then:
+
+- Run `bb plugin install path:$PWD` once, then `bb plugin dev $PWD` while you work. It rebuilds and reloads the plugin on every save anywhere in the repository except `dist/`, `node_modules/` and `.git/`, so saves under `tmp/` count too. Without it, `bb plugin reload pi-minions` rebuilds from the current files.
+- bb applies tool and instruction changes only when a thread starts a new provider session, so test those changes in a new thread.
+- pi sessions started in this checkout load `extensions/pi/` from the working tree, through `.pi/settings.json`. To use the checkout in every pi session, replace the package's git URL in `~/.pi/agent/settings.json` with the checkout path; put the URL back to switch back.
+
+See [Contributing](docs/contributing.md) for the checks to run before review.
 
 ## Documentation
 

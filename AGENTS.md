@@ -1,10 +1,10 @@
 # AGENTS
 
-pi-minions is a pi-coding-agent extension (`src/index.ts`) that adds recursive subagent orchestration — many LLM-callable tools and user commands for spawning and managing isolated in-process agent sessions (minions).
+pi-minions adds recursive subagent orchestration (minions) to pi and to bb. A pi extension (`extensions/pi/index.ts`) runs minions as isolated in-process agent sessions, and a bb plugin (`extensions/bb/`) runs them as bb child threads.
 
 ## Architecture
 
-pi-minions is foreground-only: minions run as in-process subagent sessions tracked in an in-memory hierarchy; there is no background spawning or result queue. The canonical module map, data flow, and design decisions live in [Architecture](docs/architecture.md) — consult it instead of re-deriving the tree structure from `src/`.
+The repository has three roots. `src/` is the core engine both extensions share (persona discovery, parsing and checks). `extensions/pi/` is the pi extension, which stays foreground-only with no result queue. `extensions/bb/` is the bb plugin, with its skill and vendored UI. Core imports neither pi nor bb, the extensions never import each other, and tests mirror the roots under `test/core/`, `test/pi/` and `test/bb/`. The layout rules, module map, data flow and design decisions live in [Architecture](docs/architecture.md).
 
 ## Development
 
@@ -15,6 +15,8 @@ pi-minions is foreground-only: minions run as in-process subagent sessions track
 | `npm test` | Run unit tests (vitest) |
 | `npm run test:json` | Run unit tests with JSON output (for parsing) |
 | `npm run typecheck` | TypeScript type check |
+| `npm run style:check` | Biome lint and format check of `src/`, `extensions/` and `test/` (vendored bb UI excluded) |
+| `bb plugin build .` | Build the bb plugin bundles into `dist/`; needs no running bb |
 | `npm run test:e2e` | Run agentic e2e tests |
 
 Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, etc.
@@ -34,6 +36,10 @@ Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, etc.
 Always load `/skill:test-writer` before writing or auditing tests and follow it's guidance.
 
 If any test run parsing tools area available, ALWAYS pass it raw JSON output with `npm run test:json` and then use the tool to parse the output
+
+Install dependencies with `npm ci --ignore-scripts` when you must not run `prepare` (it changes git hooks and creates symlinks).
+
+Live bb checks change the user's bb: only with permission, install with `bb plugin install path:<checkout>`, iterate with `bb plugin dev <checkout>`, and test from a separate bb thread, never the thread doing the work.
 
 ## Documentation
 
