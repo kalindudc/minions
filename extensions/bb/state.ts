@@ -1,6 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { isOwnMinion, type MinionMetadata, parseMinionMetadata } from "./spawn.js";
+import { isOwnMinion, type MinionMetadata, parseMinionMetadata } from "./metadata.js";
 
 export const MINIONS_CHANNEL = "minions";
 export const SHOW_LIMIT = 50_000;
@@ -30,6 +30,8 @@ export type MinionRow = {
   id: string;
   title: string;
   persona: string;
+  name: string | null;
+  trait: string | null;
   task: string;
   status: string;
   providerId: string;
@@ -129,6 +131,8 @@ export async function listMinions(bb: Bb, parentThreadId: string): Promise<Minio
         id: thread.id,
         title: thread.title ?? thread.titleFallback ?? metadata.persona,
         persona: metadata.persona,
+        name: metadata.name ?? null,
+        trait: metadata.trait ?? null,
         task: metadata.task,
         status: thread.status,
         providerId: thread.providerId,
@@ -153,14 +157,33 @@ export async function countMinions(bb: Bb, parentThreadId: string): Promise<Mini
   return counts;
 }
 
+export async function minionNamesInUse(bb: Bb, parentThreadId: string): Promise<Set<string>> {
+  const names = new Set<string>();
+  for (const { metadata } of await ownMinions(bb, parentThreadId)) {
+    if (metadata.name !== undefined) names.add(metadata.name);
+  }
+  return names;
+}
+
 export async function getMinionIdentity(
   bb: Bb,
   threadId: string,
-): Promise<{ persona: string; parentThreadId: string } | null> {
+): Promise<{
+  persona: string;
+  name: string | null;
+  trait: string | null;
+  parentThreadId: string;
+} | null> {
   const thread = await bb.sdk.threads.get({ threadId });
   if (thread.parentThreadId === null || !isOwnMinion(bb, thread)) return null;
   const metadata = parseMinionMetadata(await bb.sdk.threads.getPluginMetadata({ threadId }));
-  return metadata ? { persona: metadata.persona, parentThreadId: thread.parentThreadId } : null;
+  if (!metadata) return null;
+  return {
+    persona: metadata.persona,
+    name: metadata.name ?? null,
+    trait: metadata.trait ?? null,
+    parentThreadId: thread.parentThreadId,
+  };
 }
 
 async function requireMinion(

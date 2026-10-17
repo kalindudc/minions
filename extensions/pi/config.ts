@@ -2,6 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { DEFAULT_MINION_NAMES } from "../../src/minion-names.js";
+
+export { DEFAULT_MINION_NAMES };
 
 export interface PiMinionsConfig {
   minionNames?: string[];
@@ -73,70 +76,6 @@ function loadSettings(cwd: string): PiSettings {
 
   return settings;
 }
-
-export const DEFAULT_MINION_NAMES = [
-  "kevin",
-  "stuart",
-  "bob",
-  "otto",
-  "mel",
-  "arnie",
-  "barry",
-  "beena",
-  "billy",
-  "bina",
-  "bobby",
-  "brett",
-  "brian",
-  "cameron",
-  "carl",
-  "claude",
-  "dan",
-  "dave",
-  "devin",
-  "donny",
-  "erik",
-  "frank",
-  "fred",
-  "gaetano",
-  "gary",
-  "george",
-  "gerald",
-  "gigi",
-  "jeff",
-  "jim",
-  "jon",
-  "jorge",
-  "juan",
-  "ken",
-  "keela",
-  "koko",
-  "lance",
-  "larry",
-  "lionel",
-  "lola",
-  "lulu",
-  "mack",
-  "mimi",
-  "momo",
-  "nana",
-  "norbert",
-  "pedro",
-  "peter",
-  "pip",
-  "pippa",
-  "ralph",
-  "robert",
-  "ron",
-  "samson",
-  "steve",
-  "ted",
-  "tim",
-  "tom",
-  "tony",
-  "zack",
-  "ziggy",
-];
 
 export const DEFAULT_SPINNER_FRAMES = [
   "[oo]",

@@ -72,10 +72,13 @@ describe("bb runtime import boundary", () => {
     const { files, packages } = reachableFrom("extensions/bb/server.ts");
 
     expect(files).toEqual([
+      "extensions/bb/metadata.ts",
+      "extensions/bb/personality.ts",
       "extensions/bb/server.ts",
       "extensions/bb/spawn.ts",
       "extensions/bb/state.ts",
       "src/agents.ts",
+      "src/minion-names.ts",
       "src/persona-frontmatter.ts",
     ]);
     expect(packages.filter((name) => !name.startsWith("node:"))).toEqual([

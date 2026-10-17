@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
 import {
   loadPluginApp,
+  mountPluginContentScripts,
   type PluginRpcTestHandlers,
   renderSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { rpcContract } from "../../extensions/bb/server.js";
 import type { MinionRow } from "../../extensions/bb/state.js";
 
@@ -17,6 +19,8 @@ function row(overrides: Partial<MinionRow> = {}): MinionRow {
     id: "th_a",
     title: "researcher · Find the bug",
     persona: "researcher",
+    name: "Rex",
+    trait: "dramatic",
     task: "Find the bug",
     status: "active",
     providerId: "codex",
@@ -134,6 +138,17 @@ describe("Minions app registration", () => {
     ]);
     expect(app.composerCustomizations[0]!.banners ?? []).toEqual([]);
   });
+
+  it("registers the goggles icon once plain and once per name colour, and the sidebar tagger", async () => {
+    const app = await loadApp();
+
+    expect(app.icons.map((icon) => icon.name)).toEqual([
+      "pi-minions-goggles",
+      ...Array.from({ length: 7 }, (_, slot) => `pi-minions-goggles-${slot}`),
+    ]);
+    expect(app.contentScripts).toMatchObject([{ id: "minion-rows" }]);
+    expect(app.appOverlays).toMatchObject([{ id: "minion-rows" }]);
+  });
 });
 
 describe("Minions tab", () => {
@@ -158,6 +173,8 @@ describe("Minions tab", () => {
             row({
               id: "th_b",
               persona: "minion",
+              name: null,
+              trait: null,
               task: "Summarize",
               status: "idle",
               needsInput: true,
@@ -176,6 +193,32 @@ describe("Minions tab", () => {
     expect(slot.getByText("active")).toBeTruthy();
     expect(slot.getByText("waiting for input")).toBeTruthy();
     expect(slot.getAllByText("5m")).toHaveLength(2);
+  });
+
+  it("shows each minion's name in a colour of its own, followed by its trait and persona", async () => {
+    const slot = await renderPanel(
+      handlers({
+        listMinions: () => ({
+          minions: [
+            row(),
+            row({ id: "th_b", name: "Bob", trait: "deadpan", persona: "minion", task: "Two" }),
+            row({ id: "th_c", name: null, trait: null, persona: "minion", task: "Old" }),
+          ],
+        }),
+      }),
+    );
+
+    const rex = await slot.findByText("Rex");
+    const bob = slot.getByText("Bob");
+    const old = slot.getByText("minion");
+
+    expect(rex.style.color).toMatch(/^color-mix\(/);
+    expect(rex.parentElement?.textContent).toBe("Rex, the dramatic researcher");
+    expect(bob.style.color).toMatch(/^color-mix\(/);
+    expect(bob.style.color).not.toBe(rex.style.color);
+    expect(bob.parentElement?.textContent).toBe("Bob, the deadpan minion");
+    expect(old.style.color).toBe("");
+    expect(old.querySelector("[style]")).toBeNull();
   });
 
   it("opens a minion's conversation and acts on it", async () => {
@@ -247,6 +290,7 @@ describe("Minions tab", () => {
           return {
             ok: true,
             id: "th_new",
+            name: "Rex",
             persona: "researcher",
             model: "gpt-5.2",
             environment: "worktree",
@@ -383,9 +427,35 @@ describe("Minions button", () => {
     expect(await slot.findByText(/could not open the Minions tab/)).toBeTruthy();
   });
 
-  it("names the persona in a minion thread and goes back to its parent", async () => {
+  it("names the minion in its own thread and goes back to its parent", async () => {
     const slot = await renderButton(
-      handlers({ threadInfo: () => ({ persona: "researcher", parentThreadId: PARENT }) }),
+      handlers({
+        threadInfo: () => ({
+          persona: "researcher",
+          name: "Rex",
+          trait: "dramatic",
+          parentThreadId: PARENT,
+        }),
+      }),
+      { threadId: "th_a" },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: /Rex · minion/ }));
+
+    expect(slot.inspection.navigateCalls).toEqual([{ method: "toThread", threadId: PARENT }]);
+    expect(callsTo(slot, "minionCounts")).toBe(0);
+  });
+
+  it("names the persona in the thread of a minion started before minions had names", async () => {
+    const slot = await renderButton(
+      handlers({
+        threadInfo: () => ({
+          persona: "researcher",
+          name: null,
+          trait: null,
+          parentThreadId: PARENT,
+        }),
+      }),
       { threadId: "th_a" },
     );
 
@@ -454,15 +524,24 @@ describe("Minions button", () => {
     expect(within(tooltip).getByText("No minions yet")).toBeTruthy();
   });
 
-  it("names the persona and points to the parent thread on hover in a minion thread", async () => {
+  it("names the minion with its trait and persona in plain text, readable on the tooltip's background, and points to the parent thread on hover", async () => {
     const slot = await renderButton(
-      handlers({ threadInfo: () => ({ persona: "researcher", parentThreadId: PARENT }) }),
+      handlers({
+        threadInfo: () => ({
+          persona: "researcher",
+          name: "Rex",
+          trait: "dramatic",
+          parentThreadId: PARENT,
+        }),
+      }),
       { threadId: "th_a" },
     );
 
-    const tooltip = await hover(slot, await slot.findByRole("button", { name: /researcher/ }));
+    const tooltip = await hover(slot, await slot.findByRole("button", { name: /Rex · minion/ }));
+    const title = within(tooltip).getByText("Rex, the dramatic researcher");
 
-    expect(within(tooltip).getByText("researcher minion")).toBeTruthy();
+    expect(title.style.color).toBe("");
+    expect(title.querySelector("[style]")).toBeNull();
     expect(within(tooltip).getByText("Click to open the parent thread")).toBeTruthy();
   });
 
@@ -507,5 +586,170 @@ describe("Minions button", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("minion rows in bb's sidebar", () => {
+  type MetadataLookup = (args: {
+    threadIds: readonly string[];
+  }) => Promise<{ threads: { threadId: string; metadata: Record<string, string> }[] }>;
+
+  const teardowns: (() => Promise<void>)[] = [];
+
+  afterEach(async () => {
+    for (const teardown of teardowns.splice(0)) await teardown();
+  });
+
+  function sidebarThread(overrides: Partial<PluginSidebarThread>): PluginSidebarThread {
+    return {
+      id: "th_x",
+      parentThreadId: PARENT,
+      originKind: null,
+      originPluginId: "pi-minions",
+      status: "idle",
+      ...overrides,
+    } as PluginSidebarThread;
+  }
+
+  function metadataOf(metadata: Record<string, Record<string, string>>): MetadataLookup {
+    return async ({ threadIds }) => ({
+      threads: threadIds
+        .filter((threadId) => threadId in metadata)
+        .map((threadId) => ({ threadId, metadata: metadata[threadId]! })),
+    });
+  }
+
+  const settle = () =>
+    act(async () => {
+      await new Promise((done) => setTimeout(done, 20));
+    });
+
+  async function renderSidebar(
+    threads: PluginSidebarThread[],
+    lookup: MetadataLookup,
+    options: { omitExperimentalThreadRowStatus?: boolean } = {},
+  ) {
+    const app = await loadApp();
+    const scripts = await mountPluginContentScripts(app, { pluginId: "pi-minions", ...options });
+    const slot = renderSlot(
+      app.appOverlays[0]!,
+      {},
+      {
+        pluginId: "pi-minions",
+        sidebarThreads: { threads },
+        sdk: { threads: { experimental_listPluginMetadata: lookup } },
+      },
+    );
+    // Unmounting first keeps the scripts' cleanup from updating a mounted overlay outside act().
+    teardowns.push(async () => {
+      slot.lifecycle.unmount();
+      await scripts.lifecycle.dispose();
+    });
+    // Lets the name lookup resolve inside act().
+    await settle();
+    return { scripts, slot };
+  }
+
+  const lookups = (slot: { inspection: { sdkCalls: { method: string; args: unknown[] }[] } }) =>
+    slot.inspection.sdkCalls
+      .filter((call) => call.method === "threads.experimental_listPluginMetadata")
+      .map((call) => [...(call.args[0] as { threadIds: readonly string[] }).threadIds].sort());
+
+  it("tags each minion row with the goggles in its name's colour, looking the names up once", async () => {
+    const { scripts, slot } = await renderSidebar(
+      [
+        sidebarThread({ id: "th_rex" }),
+        sidebarThread({ id: "th_bob" }),
+        sidebarThread({ id: "th_anon" }),
+      ],
+      metadataOf({
+        th_rex: { name: "Rex" },
+        th_bob: { name: "Bob" },
+        th_anon: { persona: "minion" },
+      }),
+    );
+
+    await waitFor(() =>
+      expect(scripts.inspection.getThreadRowStatus("th_rex")).toEqual({
+        icon: "pi-minions-goggles-3",
+        label: "Minion",
+      }),
+    );
+    expect(scripts.inspection.getThreadRowStatus("th_bob")).toEqual({
+      icon: "pi-minions-goggles-1",
+      label: "Minion",
+    });
+    expect(scripts.inspection.getThreadRowStatus("th_anon")).toEqual({
+      icon: "pi-minions-goggles",
+      label: "Minion",
+    });
+    expect(lookups(slot)).toEqual([["th_anon", "th_bob", "th_rex"]]);
+  });
+
+  it("shows a failed minion's goggles in bb's error colour", async () => {
+    const { scripts, slot } = await renderSidebar(
+      [sidebarThread({ id: "th_rex", status: "error" })],
+      metadataOf({ th_rex: { name: "Rex" } }),
+    );
+
+    await waitFor(() => expect(lookups(slot)).toHaveLength(1));
+    await settle();
+
+    expect(scripts.inspection.getThreadRowStatus("th_rex")).toEqual({
+      icon: "pi-minions-goggles",
+      label: "Minion failed",
+      tone: "error",
+    });
+  });
+
+  it("leaves root threads, other plugins' children and forks untagged and never looks them up", async () => {
+    const { scripts, slot } = await renderSidebar(
+      [
+        sidebarThread({ id: "th_minion" }),
+        sidebarThread({ id: "th_root", parentThreadId: null }),
+        sidebarThread({ id: "th_other", originPluginId: "other-plugin" }),
+        sidebarThread({ id: "th_fork", originKind: "fork" }),
+      ],
+      metadataOf({ th_minion: { name: "Rex" } }),
+    );
+
+    await waitFor(() =>
+      expect(scripts.inspection.getThreadRowStatus("th_minion")).toMatchObject({
+        icon: "pi-minions-goggles-3",
+      }),
+    );
+    for (const id of ["th_root", "th_other", "th_fork"]) {
+      expect(scripts.inspection.getThreadRowStatus(id)).toBeNull();
+    }
+    expect(new Set(scripts.inspection.threadRowStatusCalls.map((call) => call.threadId))).toEqual(
+      new Set(["th_minion"]),
+    );
+    expect(lookups(slot)).toEqual([["th_minion"]]);
+  });
+
+  it("keeps bb's grey goggles when the name lookup fails", async () => {
+    const { scripts, slot } = await renderSidebar([sidebarThread({ id: "th_rex" })], async () => {
+      throw new Error("bb is unreachable");
+    });
+
+    await waitFor(() => expect(lookups(slot)).toHaveLength(1));
+    await settle();
+
+    expect(scripts.inspection.getThreadRowStatus("th_rex")).toEqual({
+      icon: "pi-minions-goggles",
+      label: "Minion",
+    });
+  });
+
+  it("does nothing on a bb client without the row-status call", async () => {
+    const { scripts } = await renderSidebar(
+      [sidebarThread({ id: "th_rex" })],
+      metadataOf({ th_rex: { name: "Rex" } }),
+      { omitExperimentalThreadRowStatus: true },
+    );
+
+    await settle();
+
+    expect(scripts.inspection.threadRowStatusCalls).toEqual([]);
   });
 });

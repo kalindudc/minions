@@ -48,6 +48,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   rmSync(home, { recursive: true, force: true });
 });
@@ -64,6 +65,7 @@ describe("spawning minions as bb child threads", () => {
       {
         ok: true,
         id: "th_child_1",
+        name: "Rex",
         persona: "researcher",
         model: "gpt-5.2",
         environment: "shared",
@@ -81,6 +83,7 @@ describe("spawning minions as bb child threads", () => {
       title: "Rex · Find the auth bug",
       pluginMetadata: {
         persona: "researcher",
+        name: "Rex",
         personaPath: join(home, ".agents", "agents", "researcher.md"),
         depth: 1,
         delegate: false,
@@ -96,7 +99,8 @@ describe("spawning minions as bb child threads", () => {
     expect(call).not.toHaveProperty("permissionMode");
   });
 
-  it("runs a task without a persona on the caller's provider, model and reasoning", async () => {
+  it("runs a task without a persona on the caller's provider, model and reasoning, under a random name and trait", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
     const { bb, harness } = createBbHost(world);
 
     const outcomes = await spawnBatch(bb, PARENT_ID, [{ task: "Summarize\nthe   changelog" }]);
@@ -105,6 +109,7 @@ describe("spawning minions as bb child threads", () => {
       {
         ok: true,
         id: "th_child_1",
+        name: "Kevin",
         persona: "minion",
         model: "openai/gpt-6-luna",
         environment: "shared",
@@ -114,8 +119,62 @@ describe("spawning minions as bb child threads", () => {
       providerId: "pi",
       model: "openai/gpt-6-luna",
       reasoningLevel: "medium",
-      title: "minion · Summarize the changelog",
-      pluginMetadata: { persona: "minion", personaPath: null, delegate: false },
+      title: "Kevin · Summarize the changelog",
+      pluginMetadata: {
+        persona: "minion",
+        name: "Kevin",
+        trait: "cheerful",
+        personaPath: null,
+        delegate: false,
+      },
+    });
+  });
+
+  it("names a persona without a displayName from the built-in pool", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { bb, harness } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [{ task: "Scout", agent: "scout" }]);
+
+    expect(outcomes[0]).toMatchObject({ ok: true, name: "Kevin", persona: "scout" });
+    expect(spawnCalls(harness)[0]).toMatchObject({
+      title: "Kevin · Scout",
+      pluginMetadata: { persona: "scout", name: "Kevin" },
+    });
+  });
+
+  it("skips names that the parent's live minions or earlier tasks in the batch already use", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    addMinion(world, "th_kevin", { metadata: { name: "Kevin" } });
+    const { bb, harness } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [{ task: "One" }, { task: "Two" }]);
+
+    expect(outcomes.map((outcome) => outcome.ok && outcome.name)).toEqual(["Stuart", "Bob"]);
+    expect(spawnCalls(harness).map((call) => call.title)).toEqual(["Stuart · One", "Bob · Two"]);
+  });
+
+  it("frees an archived minion's name again", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    addMinion(world, "th_kevin", { metadata: { name: "Kevin" }, thread: { archivedAt: 1 } });
+    const { bb } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [{ task: "One" }]);
+
+    expect(outcomes[0]).toMatchObject({ ok: true, name: "Kevin" });
+  });
+
+  it("gives a taken displayName a four-character suffix", async () => {
+    addMinion(world, "th_rex", { persona: "researcher", metadata: { name: "Rex" } });
+    const { bb, harness } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [{ task: "Again", agent: "researcher" }]);
+
+    const name = outcomes[0]?.ok ? outcomes[0].name : "";
+    expect(name).toMatch(/^Rex-[0-9a-f]{4}$/);
+    expect(spawnCalls(harness)[0]).toMatchObject({
+      title: `${name} · Again`,
+      pluginMetadata: { name },
     });
   });
 
@@ -343,6 +402,17 @@ describe("spawning minions as bb child threads", () => {
     const outcomes = await spawnBatch(bb, PARENT_ID, [{ task: "Edit", environment: "worktree" }]);
 
     expect(outcomes).toMatchObject([{ ok: false, error: expect.stringContaining("Git") }]);
+  });
+
+  it("puts a persona body in the prompt when the minion's name and personality push its instructions past the limit", async () => {
+    writePersona(join(home, ".agents", "agents"), "edge", "", "E".repeat(3900));
+    const { bb, harness } = createBbHost(world);
+
+    await spawnBatch(bb, PARENT_ID, [{ task: "Edge case", agent: "edge" }]);
+
+    const [call] = spawnCalls(harness);
+    expect(call.prompt.startsWith("E".repeat(3900))).toBe(true);
+    expect(call.pluginMetadata).toMatchObject({ persona: "edge", trait: expect.any(String) });
   });
 
   it("puts a persona body that would overflow the instruction limit at the start of the prompt", async () => {

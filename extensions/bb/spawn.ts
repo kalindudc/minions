@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { z } from "zod";
 import {
   describePersonaWarning,
   discoverAgents,
@@ -10,9 +9,11 @@ import {
   skippedPersona,
 } from "../../src/agents.js";
 import type { AgentConfig, PersonaWarning } from "../../src/types.js";
+import { isOwnMinion, MAX_DEPTH, type MinionMetadata, parseMinionMetadata } from "./metadata.js";
+import { personalityLine, pickName, pickTrait } from "./personality.js";
+import { minionNamesInUse } from "./state.js";
 
 export const MAX_TASKS = 8;
-export const MAX_DEPTH = 2;
 export const EPHEMERAL_PERSONA = "minion";
 const INSTRUCTION_LIMIT = 4096;
 const CHOICE_LIMIT = 20;
@@ -28,22 +29,17 @@ export type SpawnTask = {
 };
 
 export type SpawnOutcome =
-  | { ok: true; id: string; persona: string; model: string; environment: "shared" | "worktree" }
+  | {
+      ok: true;
+      id: string;
+      name: string;
+      persona: string;
+      model: string;
+      environment: "shared" | "worktree";
+    }
   | { ok: false; task: string; error: string };
 
-export const minionMetadataSchema = z.object({
-  persona: z.string().min(1),
-  personaPath: z.string().min(1).nullable(),
-  depth: z.number().int().min(1).max(MAX_DEPTH),
-  delegate: z.boolean(),
-  batchId: z.string().min(1),
-  providerId: z.string().min(1),
-  model: z.string().min(1),
-  task: z.string(),
-  environment: z.enum(["shared", "worktree"]),
-});
-
-export type MinionMetadata = z.infer<typeof minionMetadataSchema>;
+export type MinionIdentity = Pick<MinionMetadata, "persona" | "name" | "trait">;
 
 type Bb = BbPluginApi;
 type Thread = Awaited<ReturnType<Bb["sdk"]["threads"]["get"]>>;
@@ -53,21 +49,6 @@ type CatalogModel = Catalog["models"][number];
 type ExecutionDefaults = Awaited<ReturnType<Bb["sdk"]["threads"]["defaultExecutionOptions"]>>;
 type SpawnEnvironment = Parameters<Bb["sdk"]["threads"]["spawn"]>[0]["environment"];
 type Permission = NonNullable<AgentConfig["permission"]>;
-
-export function parseMinionMetadata(value: unknown): MinionMetadata | null {
-  const parsed = minionMetadataSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
-export function mayDelegate(metadata: MinionMetadata): boolean {
-  return metadata.delegate && metadata.depth < MAX_DEPTH;
-}
-
-// bb records which plugin created a thread and no metadata write can change it, so this, not metadata,
-// decides whether a thread is one of this plugin's minions.
-export function isOwnMinion(bb: Bb, thread: Pick<Thread, "originKind" | "originPluginId">) {
-  return thread.originKind === null && thread.originPluginId === bb.pluginId;
-}
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -79,15 +60,17 @@ function listChoices(values: readonly string[]): string {
   return values.length > CHOICE_LIMIT ? `${shown} and ${values.length - CHOICE_LIMIT} more` : shown;
 }
 
-export function identityLine(persona: string): string {
-  return (
-    `You are a bb minion: a child thread working as the persona ${JSON.stringify(persona)} ` +
-    "for a parent thread, which receives your final message automatically."
-  );
+export function identityLine({ persona, name, trait }: MinionIdentity): string {
+  const who = name ? `You are ${JSON.stringify(name)}, a bb minion` : "You are a bb minion";
+  const line =
+    `${who}: a child thread working as the persona ${JSON.stringify(persona)} ` +
+    "for a parent thread, which receives your final message automatically.";
+  const personality = personalityLine(trait);
+  return personality === null ? line : `${line} ${personality}`;
 }
 
-export function personaInstructions(persona: string, body: string): string | null {
-  const text = body ? `${identityLine(persona)}\n\n${body}` : identityLine(persona);
+export function personaInstructions(identity: MinionIdentity, body: string): string | null {
+  const text = body ? `${identityLine(identity)}\n\n${body}` : identityLine(identity);
   return text.length <= INSTRUCTION_LIMIT ? text : null;
 }
 
@@ -150,7 +133,7 @@ const THINKING_REASONING: Record<string, string> = {
 
 const PERMISSION_RANK: Record<Permission, number> = { "accept-edits": 0, auto: 1, full: 2 };
 
-type Persona = { config: AgentConfig | null; name: string; displayName: string; body: string };
+type Persona = { config: AgentConfig | null; name: string; body: string };
 
 type Batch = {
   bb: Bb;
@@ -162,6 +145,7 @@ type Batch = {
   catalogs: Map<string, Promise<Catalog>>;
   batchId: string;
   depth: number;
+  names: Set<string>;
 };
 
 function resolvePersona(
@@ -170,7 +154,7 @@ function resolvePersona(
   cwd: string | null,
 ): Persona {
   if (agent === undefined) {
-    return { config: null, name: EPHEMERAL_PERSONA, displayName: EPHEMERAL_PERSONA, body: "" };
+    return { config: null, name: EPHEMERAL_PERSONA, body: "" };
   }
   if (personas instanceof Error) throw personas;
   const config = personas.agents.find((persona) => persona.name === agent);
@@ -184,8 +168,7 @@ function resolvePersona(
   if (!isAllowedPersonaPath(config.filePath, cwd)) {
     throw new Error(`Persona file ${config.filePath} resolves outside the agent directories.`);
   }
-  const displayName = config.displayName ?? config.name;
-  return { config, name: config.name, displayName, body: config.systemPrompt };
+  return { config, name: config.name, body: config.systemPrompt };
 }
 
 function catalogFor(batch: Batch, providerId: string): Promise<Catalog> {
@@ -301,16 +284,18 @@ async function spawnOne(batch: Batch, task: SpawnTask): Promise<SpawnOutcome> {
       : undefined;
   const reasoning = chooseReasoning(persona, inherited, model);
   const permission = choosePermission(persona, catalog.permissionCeiling);
+  const name = pickName(persona.config?.displayName, batch.names);
+  batch.names.add(name);
+  const identity = { persona: persona.name, name, trait: pickTrait() };
   const environment = task.environment ?? persona.config?.environment ?? "shared";
   // configure checks the persona path against the minion's own environment, and a worktree minion
   // cannot vouch for a project persona in the caller's checkout, so that body travels in the prompt.
   const verifiable = persona.config?.source !== "project" || environment === "shared";
   const inPrompt =
-    persona.body !== "" &&
-    (!verifiable || personaInstructions(persona.name, persona.body) === null);
+    persona.body !== "" && (!verifiable || personaInstructions(identity, persona.body) === null);
   const request = `${task.task}\n\n${FINAL_ANSWER_REQUEST}`;
   const metadata: MinionMetadata = {
-    persona: persona.name,
+    ...identity,
     personaPath: verifiable ? (persona.config?.filePath ?? null) : null,
     depth: batch.depth,
     delegate: persona.config?.delegate === true,
@@ -330,11 +315,11 @@ async function spawnOne(batch: Batch, task: SpawnTask): Promise<SpawnOutcome> {
     model: model.id,
     reasoningLevel: reasoning,
     ...(permission ? { permissionMode: permission } : {}),
-    title: `${persona.displayName} · ${task.task.replace(/\s+/g, " ").trim().slice(0, 60)}`,
+    title: `${name} · ${task.task.replace(/\s+/g, " ").trim().slice(0, 60)}`,
     prompt: inPrompt ? `${persona.body}\n\n${request}` : request,
     pluginMetadata: metadata,
   });
-  return { ok: true, id: child.id, persona: persona.name, model: model.id, environment };
+  return { ok: true, id: child.id, name, persona: persona.name, model: model.id, environment };
 }
 
 // Depth comes from the thread tree; metadata only says whether the minion's persona may delegate.
@@ -374,6 +359,7 @@ export async function spawnBatch(
   if (!caller.environmentId) throw new Error("This thread has no environment to start minions in.");
 
   const environment = await bb.sdk.environments.get({ environmentId: caller.environmentId });
+  const names = await minionNamesInUse(bb, caller.id);
   let defaults: ExecutionDefaults | Error;
   try {
     defaults = await bb.sdk.threads.defaultExecutionOptions({ threadId: callerThreadId });
@@ -400,6 +386,7 @@ export async function spawnBatch(
     catalogs: new Map(),
     batchId: randomUUID().slice(0, 8),
     depth,
+    names,
   };
   const outcomes: SpawnOutcome[] = [];
   for (const task of tasks) {

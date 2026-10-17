@@ -29,8 +29,12 @@ beforeEach(() => {
 });
 
 describe("listing a thread's minions", () => {
-  it("lists only this thread's own minion children with status, model, progress and preview", async () => {
-    const a = addMinion(world, "th_a", { persona: "researcher", status: "active" });
+  it("lists only this thread's own minion children with name, trait, status, model, progress and preview", async () => {
+    const a = addMinion(world, "th_a", {
+      persona: "researcher",
+      status: "active",
+      metadata: { name: "Rex", trait: "dramatic" },
+    });
     const b = addMinion(world, "th_b", { status: "idle" });
     world.outputs.set("th_b", "Done: found 3 bugs");
     world.quests.set("th_a", {
@@ -51,6 +55,8 @@ describe("listing a thread's minions", () => {
         id: "th_a",
         title: a.title,
         persona: "researcher",
+        name: "Rex",
+        trait: "dramatic",
         task: "task for th_a",
         status: "active",
         providerId: "pi",
@@ -64,6 +70,8 @@ describe("listing a thread's minions", () => {
         id: "th_b",
         title: b.title,
         persona: "minion",
+        name: null,
+        trait: null,
         task: "task for th_b",
         status: "idle",
         providerId: "pi",
@@ -208,12 +216,29 @@ describe("acting on a minion", () => {
 });
 
 describe("minion identity", () => {
-  it("identifies a minion thread's persona and parent", async () => {
-    addMinion(world, "th_a", { persona: "researcher" });
+  it("identifies a minion thread's persona, name, trait and parent", async () => {
+    addMinion(world, "th_a", {
+      persona: "researcher",
+      metadata: { name: "Rex", trait: "dramatic" },
+    });
     const { bb } = createBbHost(world);
 
     expect(await getMinionIdentity(bb, "th_a")).toEqual({
       persona: "researcher",
+      name: "Rex",
+      trait: "dramatic",
+      parentThreadId: PARENT_ID,
+    });
+  });
+
+  it("reports no name or trait for a minion started before minions had them", async () => {
+    addMinion(world, "th_old", { persona: "researcher" });
+    const { bb } = createBbHost(world);
+
+    expect(await getMinionIdentity(bb, "th_old")).toEqual({
+      persona: "researcher",
+      name: null,
+      trait: null,
       parentThreadId: PARENT_ID,
     });
   });

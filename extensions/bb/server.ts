@@ -1,13 +1,12 @@
 import { type BbPluginApi, defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { formatPersonaWarnings, readPersonaBody } from "../../src/agents.js";
+import { mayDelegate, parseMinionMetadata } from "./metadata.js";
 import {
   EPHEMERAL_PERSONA,
   identityLine,
   listPersonas,
   MAX_TASKS,
-  mayDelegate,
-  parseMinionMetadata,
   personaInstructions,
   type SpawnOutcome,
   spawnBatch,
@@ -68,6 +67,7 @@ const outcomeSchema = z.discriminatedUnion("ok", [
   z.object({
     ok: z.literal(true),
     id: z.string(),
+    name: z.string(),
     persona: z.string(),
     model: z.string(),
     environment: environmentSchema,
@@ -78,6 +78,8 @@ const minionRowSchema = z.object({
   id: z.string(),
   title: z.string(),
   persona: z.string(),
+  name: z.string().nullable(),
+  trait: z.string().nullable(),
   task: z.string(),
   status: z.string(),
   providerId: z.string(),
@@ -96,7 +98,14 @@ const okSchema = z.object({ ok: z.literal(true) });
 export const rpcContract = defineRpcContract({
   threadInfo: {
     input: z.object({ threadId: threadIdSchema }).strict(),
-    output: z.object({ persona: z.string(), parentThreadId: z.string() }).nullable(),
+    output: z
+      .object({
+        persona: z.string(),
+        name: z.string().nullable(),
+        trait: z.string().nullable(),
+        parentThreadId: z.string(),
+      })
+      .nullable(),
   },
   listMinions: {
     input: z.object({ threadId: threadIdSchema }).strict(),
@@ -155,7 +164,7 @@ function clip(text: string, limit: number): string {
 
 function formatOutcome(outcome: SpawnOutcome): string {
   if (!outcome.ok) return `- failed "${clip(outcome.task, 60)}": ${outcome.error}`;
-  return `- ${outcome.persona}: thread ${outcome.id}, model ${outcome.model}, ${outcome.environment} environment`;
+  return `- ${outcome.name} (${outcome.persona}): thread ${outcome.id}, model ${outcome.model}, ${outcome.environment} environment`;
 }
 
 function formatSpawn(outcomes: SpawnOutcome[]) {
@@ -176,7 +185,8 @@ function formatRow(row: MinionRow): string {
   const progress = row.progress
     ? ` · quests ${row.progress.done}/${row.progress.total}${row.progress.current ? `: ${clip(row.progress.current, 60)}` : ""}`
     : "";
-  return `- ${row.id} · ${row.persona} · ${status} · ${row.model}${progress} · ${clip(row.task, TASK_LIMIT)}`;
+  const who = row.name ? `${row.name} (${row.persona})` : row.persona;
+  return `- ${row.id} · ${who} · ${status} · ${row.model}${progress} · ${clip(row.task, TASK_LIMIT)}`;
 }
 
 export default async function plugin(bb: BbPluginApi): Promise<void> {
@@ -270,17 +280,16 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
       return {
         tools: CHILD_TOOLS,
         skills: SKILLS,
-        instructions: `${identityLine(EPHEMERAL_PERSONA)} This minion's metadata is missing or malformed, so it may not spawn minions.`,
+        instructions: `${identityLine({ persona: EPHEMERAL_PERSONA })} This minion's metadata is missing or malformed, so it may not spawn minions.`,
       };
     }
     const tools = mayDelegate(metadata) ? ALL_TOOLS : CHILD_TOOLS;
     if (metadata.personaPath === null) {
-      return { tools, skills: SKILLS, instructions: identityLine(metadata.persona) };
+      return { tools, skills: SKILLS, instructions: identityLine(metadata) };
     }
     try {
       const body = readPersonaBody(metadata.personaPath, context.environment.path);
-      const instructions =
-        personaInstructions(metadata.persona, body) ?? identityLine(metadata.persona);
+      const instructions = personaInstructions(metadata, body) ?? identityLine(metadata);
       return { tools, skills: SKILLS, instructions };
     } catch (err) {
       bb.log.warn(
@@ -289,7 +298,7 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
       return {
         tools: CHILD_TOOLS,
         skills: SKILLS,
-        instructions: `${identityLine(metadata.persona)} Its persona file could not be read, so follow the task as written; delegation is disabled.`,
+        instructions: `${identityLine(metadata)} Its persona file could not be read, so follow the task as written; delegation is disabled.`,
       };
     }
   });

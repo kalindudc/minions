@@ -27,6 +27,8 @@ Array of display names used for ephemeral minions.
 
 Default: built-in minion name pool.
 
+bb minions use the built-in pool; this setting applies to pi's foreground minions.
+
 ## allowEphemeral
 
 Whether [`spawn`](reference.md#spawn) may create a built-in ephemeral minion for a task entry that omits `agent`.

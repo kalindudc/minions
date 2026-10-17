@@ -1,5 +1,9 @@
 import {
   definePluginApp,
+  experimental_usePluginId,
+  experimental_useSidebarThreads,
+  type PluginComposerThreadRowStatus,
+  type PluginContentScriptContext,
   type PluginRpcClient,
   type PluginThreadPanelProps,
   ThreadChat,
@@ -8,8 +12,10 @@ import {
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
+  useSdk,
 } from "@get-bb/plugin-sdk/app";
 import {
+  type ComponentType,
   type FormEvent,
   type ReactNode,
   useCallback,
@@ -18,6 +24,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { Button } from "./components/ui/button";
 import {
@@ -53,9 +60,28 @@ const BLINK_FRAMES = [
 const BLINK_TICK_MS = 100;
 const FIELD_CLASS =
   "w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+// Tailwind 600 teal to pink; red, amber and green stay free so a name never reads as a status.
+const NAME_HUES = [
+  "#0d9488",
+  "#0891b2",
+  "#2563eb",
+  "#4f46e5",
+  "#7c3aed",
+  "#c026d3",
+  "#db2777",
+] as const;
+const GOGGLES_ICON = "pi-minions-goggles";
+const ROW_TAGS_ID = "minion-rows";
+// bb accepts at most 200 thread ids per metadata request.
+const METADATA_BATCH = 200;
 
 type Rpc = PluginRpcClient<typeof rpcContract>;
-type Identity = { persona: string; parentThreadId: string };
+type Identity = {
+  persona: string;
+  name: string | null;
+  trait: string | null;
+  parentThreadId: string;
+};
 type Persona = { name: string; description: string };
 type SkippedPersona = { path: string; reason: string };
 
@@ -159,6 +185,46 @@ function useBlinkFrame(active: boolean): string {
   return BLINK_FRAMES[blinking ? frame : 0];
 }
 
+// 32-bit FNV-1a over code points, so a name has the same colour in every window and session.
+function nameSlot(name: string): number {
+  let hash = 0x811c9dc5;
+  for (const char of name) {
+    hash ^= char.codePointAt(0) as number;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) % NAME_HUES.length;
+}
+
+// Blending with the theme's text colour keeps the hue readable in light, dark and custom themes.
+function hueColor(slot: number): string {
+  return `color-mix(in oklab, ${NAME_HUES[slot]} 75%, var(--foreground))`;
+}
+
+function nameColor(name: string): string {
+  return hueColor(nameSlot(name));
+}
+
+type TitleParts = Pick<MinionRow, "name" | "trait" | "persona">;
+
+function titleRest({ trait, persona }: TitleParts): string {
+  return trait ? `, the ${trait} ${persona}` : `, the ${persona}`;
+}
+
+function MinionTitle(parts: TitleParts) {
+  if (parts.name === null) return <>{parts.persona}</>;
+  return (
+    <>
+      <span style={{ color: nameColor(parts.name) }}>{parts.name}</span>
+      {titleRest(parts)}
+    </>
+  );
+}
+
+// The tooltip's accent background leaves a coloured name unreadable, so it gets the same words plain.
+function minionTitleText(parts: TitleParts): string {
+  return parts.name === null ? parts.persona : `${parts.name}${titleRest(parts)}`;
+}
+
 function statusLabel(row: MinionRow): string {
   return row.needsInput ? "waiting for input" : row.status;
 }
@@ -213,7 +279,9 @@ function MinionList({
             className="flex w-full flex-col gap-1 px-3 py-2.5 text-left text-sm hover:bg-state-hover"
           >
             <span className="flex items-center gap-2">
-              <span className="font-medium">{row.persona}</span>
+              <span className="font-medium">
+                <MinionTitle {...row} />
+              </span>
               <span
                 className={cn("text-xs", row.needsInput ? "text-warning" : "text-muted-foreground")}
               >
@@ -567,8 +635,8 @@ function describeMinions(
 ): ButtonView {
   if (identity) {
     return {
-      label: `${identity.persona} · minion`,
-      lines: [`${identity.persona} minion`, "Click to open the parent thread"],
+      label: `${identity.name ?? identity.persona} · minion`,
+      lines: [minionTitleText(identity), "Click to open the parent thread"],
       tone: "default",
       blinking: false,
       parentThreadId: identity.parentThreadId,
@@ -656,7 +724,149 @@ function MinionsAction() {
   return <MinionsButton key={threadId} threadId={threadId} />;
 }
 
+// bb wraps a registered icon in a span that carries its own colour class and gives the artwork only
+// "size-full", so an inline colour on the <svg> wins over bb's grey.
+function gogglesIcon(color: string | undefined): ComponentType<{ className?: string }> {
+  return function Goggles({ className }: { className?: string }) {
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className={className}
+        style={color === undefined ? undefined : { color }}
+      >
+        <circle cx="7" cy="12" r="4" />
+        <circle cx="17" cy="12" r="4" />
+        <path d="M11 12h2M3 12H1.5M21 12h1.5" />
+      </svg>
+    );
+  };
+}
+
+type SetRowStatus = NonNullable<PluginContentScriptContext["experimental_setThreadRowStatus"]>;
+
+// Only a content script receives bb's row-status setter and only a React slot can read the sidebar's
+// threads, so the script hands the setter to the overlay.
+let rowStatusSetter: SetRowStatus | null = null;
+const rowStatusListeners = new Set<() => void>();
+
+function publishRowStatusSetter(setter: SetRowStatus | null): void {
+  rowStatusSetter = setter;
+  for (const listener of rowStatusListeners) listener();
+}
+
+function subscribeRowStatusSetter(listener: () => void): () => void {
+  rowStatusListeners.add(listener);
+  return () => {
+    rowStatusListeners.delete(listener);
+  };
+}
+
+function minionRowStatus(name: string | null, failed: boolean): PluginComposerThreadRowStatus {
+  if (failed) return { icon: GOGGLES_ICON, label: "Minion failed", tone: "error" };
+  return { icon: name ? `${GOGGLES_ICON}-${nameSlot(name)}` : GOGGLES_ICON, label: "Minion" };
+}
+
+function sameRowStatus(a: PluginComposerThreadRowStatus, b: PluginComposerThreadRowStatus) {
+  return a.icon === b.icon && a.label === b.label && a.tone === b.tone;
+}
+
+type AppliedRowStatuses = {
+  setter: SetRowStatus | null;
+  statuses: ReadonlyMap<string, PluginComposerThreadRowStatus>;
+};
+
+function MinionRowTags(): null {
+  const setter = useSyncExternalStore(
+    subscribeRowStatusSetter,
+    () => rowStatusSetter,
+    () => null,
+  );
+  const pluginId = experimental_usePluginId();
+  const { threads } = experimental_useSidebarThreads();
+  const sdk = useSdk();
+  const rows = useMemo(
+    () =>
+      threads.filter(
+        (thread) =>
+          thread.originPluginId === pluginId &&
+          thread.originKind === null &&
+          thread.parentThreadId !== null,
+      ),
+    [threads, pluginId],
+  );
+  const [names, setNames] = useState<ReadonlyMap<string, string | null>>(() => new Map());
+  const requested = useRef(new Set<string>());
+  const applied = useRef<AppliedRowStatuses>({ setter: null, statuses: new Map() });
+
+  // Names never change, so each minion is looked up once per window.
+  useEffect(() => {
+    if (setter === null) return;
+    const ids = rows.map((row) => row.id).filter((id) => !requested.current.has(id));
+    for (let start = 0; start < ids.length; start += METADATA_BATCH) {
+      const batch = ids.slice(start, start + METADATA_BATCH);
+      for (const id of batch) requested.current.add(id);
+      sdk.threads.experimental_listPluginMetadata({ threadIds: batch }).then(
+        ({ threads: found }) =>
+          setNames((previous) => {
+            const next = new Map(previous);
+            for (const id of batch) next.set(id, null);
+            for (const { threadId, metadata } of found) {
+              next.set(threadId, typeof metadata.name === "string" ? metadata.name : null);
+            }
+            return next;
+          }),
+        // Forgotten ids are looked up again on the next sidebar change.
+        () => {
+          for (const id of batch) requested.current.delete(id);
+        },
+      );
+    }
+  }, [setter, rows, sdk]);
+
+  useEffect(() => {
+    const previous =
+      applied.current.setter === setter ? applied.current.statuses : new Map<string, never>();
+    const next = new Map<string, PluginComposerThreadRowStatus>();
+    if (setter !== null) {
+      for (const row of rows) {
+        const status = minionRowStatus(names.get(row.id) ?? null, row.status === "error");
+        next.set(row.id, status);
+        const shown = previous.get(row.id);
+        if (shown === undefined || !sameRowStatus(shown, status)) setter(row.id, status);
+      }
+      for (const id of previous.keys()) if (!next.has(id)) setter(id, null);
+    }
+    applied.current = { setter, statuses: next };
+  }, [setter, rows, names]);
+
+  return null;
+}
+
 export default definePluginApp((app) => {
+  app.experimental_icons.register({ name: GOGGLES_ICON, component: gogglesIcon(undefined) });
+  NAME_HUES.forEach((_, slot) => {
+    app.experimental_icons.register({
+      name: `${GOGGLES_ICON}-${slot}`,
+      component: gogglesIcon(hueColor(slot)),
+    });
+  });
+  app.contentScripts.register({
+    id: ROW_TAGS_ID,
+    mount(context) {
+      const setter = context.experimental_setThreadRowStatus ?? null;
+      publishRowStatusSetter(setter);
+      return () => {
+        if (rowStatusSetter === setter) publishRowStatusSetter(null);
+      };
+    },
+  });
+  app.slots.experimental_appOverlay({ id: ROW_TAGS_ID, component: MinionRowTags });
   app.slots.threadPanelAction({
     id: ACTION_ID,
     title: "Minions",

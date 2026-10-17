@@ -6,7 +6,7 @@ pi-minions runs minions in two places: a pi extension runs them as foreground se
 
 | Root | Contains | Imports |
 |---|---|---|
-| `src/` | Core engine: persona discovery, parsing and validation, persona-file checks and the persona types | Node built-ins, `yaml` and other core files only |
+| `src/` | Core engine: persona discovery, parsing and validation, persona-file checks, the persona types and the minion name pool | Node built-ins, `yaml` and other core files only |
 | `extensions/pi/` | pi extension: foreground minion sessions, tools, commands and TUI | Core and pi packages |
 | `extensions/bb/` | bb plugin: child-thread minions, RPC, agent tools, the Minions tab, its skill and vendored UI | Core, the bb SDK and UI packages |
 
@@ -19,6 +19,7 @@ One `package.json` serves both hosts, because pi and bb each read the repository
 | Module | Purpose |
 |---|---|
 | `src/agents.ts` | Discovers personas in the eight user and project locations, with project personas overriding user ones; validates the bb persona fields and skips invalid files with a warning; checks that a persona path resolves into a directory discovery reads for the thread, and reads persona bodies |
+| `src/minion-names.ts` | The built-in minion name pool that pi and bb both draw names from |
 | `src/persona-frontmatter.ts` | Parses frontmatter and resolves the pi agent directory exactly as pi 1.2.0 does, without loading pi |
 | `src/types.ts` | `AgentConfig` and the other persona types |
 
@@ -47,9 +48,11 @@ One `package.json` serves both hosts, because pi and bb each read the repository
 | Module | Purpose |
 |---|---|
 | `extensions/bb/server.ts` | Plugin entry: RPC contract, the five agent tools and per-thread tool selection |
+| `extensions/bb/metadata.ts` | The minion metadata schema stored on each child thread, and the check that a thread is one of this plugin's minions |
+| `extensions/bb/personality.ts` | Personality traits and their instruction sentence, and the choice of a minion's name |
 | `extensions/bb/spawn.ts` | Spawns child threads: persona, provider, model, reasoning, permission, environment and delegation depth |
 | `extensions/bb/state.ts` | Lists a thread's minions, checks ownership, stops, archives and messages them, and publishes live updates |
-| `extensions/bb/app.tsx` | Frontend entry: Minions tab and the composer's Minions button |
+| `extensions/bb/app.tsx` | Frontend entry: Minions tab, the composer's Minions button and the sidebar's goggles tag |
 | `extensions/bb/skills/minions/` | Guidance bb gives agents for nonblocking delegation |
 | `extensions/bb/components/`, `hooks/`, `lib/`, `components.json` | UI controls vendored from the bb scaffold, excluded from Biome so they stay close to the registry copies |
 
