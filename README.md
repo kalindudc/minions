@@ -43,8 +43,8 @@ learn_minions({})
 This repository is also a bb plugin. Install it from Git, or from a local checkout after running `npm ci --ignore-scripts` in it. Do not install it from npm: the npm package contains only the pi extension, so `bb plugin install npm:pi-minions` would find no bb entry files.
 
 ```text
-bb plugin install git:https://github.com/kalindudc/pi-minions
-bb plugin install path:/path/to/pi-minions
+bb plugin install git:https://github.com/kalindudc/minions
+bb plugin install path:/path/to/minions
 ```
 
 Update pi-minions in pi to the same version before you install the plugin. pi-minions 0.19.0 and earlier register tools with the same names as the plugin, and pi refuses to start a bb thread that loads both.

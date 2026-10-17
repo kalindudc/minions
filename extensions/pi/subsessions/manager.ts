@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import {
   createAgentSession,
@@ -19,6 +19,21 @@ import type {
   MinionSessionHandle,
   MinionSessionMetadata,
 } from "./types.js";
+
+// Matched by package name, not path: checkouts and git installs carry the repository's name.
+function isPiMinionsExtension(entryPath: string): boolean {
+  let dir = dirname(entryPath);
+  while (!existsSync(join(dir, "package.json"))) {
+    const parent = dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+  try {
+    return JSON.parse(readFileSync(join(dir, "package.json"), "utf-8")).name === "pi-minions";
+  } catch {
+    return false;
+  }
+}
 
 export class SubsessionManager {
   private activeSessions = new Map<string, AgentSession>();
@@ -96,7 +111,7 @@ export class SubsessionManager {
           : undefined,
       extensionsOverride: (base) => ({
         ...base,
-        extensions: base.extensions.filter((ext) => !ext.resolvedPath.includes("pi-minions")),
+        extensions: base.extensions.filter((ext) => !isPiMinionsExtension(ext.resolvedPath)),
       }),
     });
     await loader.reload();

@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kalindudc/pi-minions.git"
+    "url": "git+https://github.com/kalindudc/minions.git"
   },
   "publishConfig": {
     "access": "public"

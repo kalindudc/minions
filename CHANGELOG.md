@@ -7,6 +7,8 @@
 - feat: add the bb persona fields `provider`, `reasoning`, `permission`, `environment` and `delegate`
 - fix: an invalid persona file (malformed YAML or an invalid bb field) is skipped with a warning naming the file and reason, instead of breaking every named spawn; see [agents](docs/agents.md#invalid-persona-files)
 - fix: a task-level `model` override now selects that model for named agents, not only for ephemeral minions
+- fix: minion sessions leave out pi-minions by its package name instead of a `pi-minions` path, so a checkout or git install under another directory name no longer loads it into minions
+- chore: the GitHub repository is now `kalindudc/minions`; the npm package stays `pi-minions`
 - chore: reorganize the repository: the shared persona engine lives in `src/`, the pi extension in `extensions/pi/` and the bb plugin in `extensions/bb/`, with tests mirrored under `test/core/`, `test/pi/` and `test/bb/`. See [architecture](docs/architecture.md#layout).
 
 ## [0.19.0] - 2026-06-18

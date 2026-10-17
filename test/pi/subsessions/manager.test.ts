@@ -895,6 +895,81 @@ describe("SubsessionManager", () => {
     });
   });
 
+  describe("extensions a minion session loads", () => {
+    let extRoot: string;
+
+    beforeEach(() => {
+      extRoot = mkdtempSync(join(tmpdir(), "minion-ext-"));
+    });
+
+    afterEach(() => {
+      rmSync(extRoot, { recursive: true, force: true });
+    });
+
+    function writeExtension(dir: string, packageName: string, entry: string): string {
+      mkdirSync(join(dir, entry, ".."), { recursive: true });
+      writeFileSync(join(dir, "package.json"), JSON.stringify({ name: packageName }));
+      const entryPath = join(dir, entry);
+      writeFileSync(entryPath, "export default () => {};");
+      return entryPath;
+    }
+
+    async function extensionsLoadedByMinion(resolvedPaths: string[]): Promise<string[]> {
+      const { DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
+      await manager.create({
+        id: "ext-filter",
+        name: "test-minion",
+        task: "do something",
+        config: {
+          name: "test",
+          description: "Test",
+          systemPrompt: "test",
+          source: "ephemeral",
+          filePath: "",
+        },
+        spawnedBy: "tc",
+        cwd: tempDir,
+        modelRegistry: {} as any,
+      });
+      const options = vi.mocked(DefaultResourceLoader).mock.calls[0][0] as any;
+      const base = {
+        extensions: resolvedPaths.map((resolvedPath) => ({ resolvedPath })),
+        errors: [],
+      };
+      return options.extensionsOverride(base).extensions.map((ext: any) => ext.resolvedPath);
+    }
+
+    it("leaves out pi-minions wherever it is checked out, and keeps other extensions", async () => {
+      const renamedCheckout = writeExtension(
+        join(extRoot, "minions"),
+        "pi-minions",
+        "extensions/pi/index.ts",
+      );
+      const gitInstall = writeExtension(
+        join(extRoot, "git", "github.com", "kalindudc", "minions"),
+        "pi-minions",
+        "extensions/pi/index.ts",
+      );
+      const otherExtension = writeExtension(join(extRoot, "bash-guard"), "bash-guard", "index.ts");
+
+      const loaded = await extensionsLoadedByMinion([renamedCheckout, gitInstall, otherExtension]);
+
+      expect(loaded).toEqual([otherExtension]);
+    });
+
+    it("keeps an extension whose path mentions pi-minions but whose package is another", async () => {
+      const lookalike = writeExtension(
+        join(extRoot, "pi-minions-theme"),
+        "pi-minions-theme",
+        "index.ts",
+      );
+
+      const loaded = await extensionsLoadedByMinion([lookalike]);
+
+      expect(loaded).toEqual([lookalike]);
+    });
+  });
+
   describe("session history parsing", () => {
     it("reconstructs activity from jsonl file", () => {
       const minionsDir = getMinionsDir(tempDir);
