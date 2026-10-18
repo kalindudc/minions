@@ -1,6 +1,6 @@
 # [oo] pi-minion Changelog
 
-## [Unreleased]
+## [0.20.0] - 2026-10-18
 
 - feat: run minions as bb child threads when pi-minions is installed as a bb plugin. Every bb provider gets nonblocking `spawn`, `list_agents`, `list_minions`, `show_minion` and `halt`, and bb delivers each minion's answer to its parent; foreground pi sessions are unchanged outside bb. See [reference](docs/reference.md#bb-tools).
 - feat: add a Minions tab and a `[oo]` Minions button in the composer for managing a thread's minions in bb
