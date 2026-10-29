@@ -258,6 +258,61 @@ describe("spawning minions as bb child threads", () => {
     expect(spawnCalls(harness)[0]).toMatchObject({ reasoningLevel: "low" });
   });
 
+  it.each([
+    ["off", "none"],
+    ["minimal", "low"],
+    ["low", "low"],
+    ["medium", "medium"],
+    ["high", "high"],
+    ["xhigh", "xhigh"],
+  ] as const)("maps task thinking %s to bb reasoning %s", async (thinking, reasoningLevel) => {
+    const { bb, harness } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [
+      { task: "Think", model: "claude-x", thinking },
+    ]);
+
+    expect(outcomes[0]).toMatchObject({ ok: true });
+    expect(spawnCalls(harness)[0]).toMatchObject({ reasoningLevel });
+  });
+
+  it("lets task thinking override both persona reasoning and persona thinking independently in a batch", async () => {
+    const { bb, harness } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [
+      { task: "Research", agent: "researcher", thinking: "low" },
+      { task: "Think", agent: "thinker", thinking: "high" },
+      { task: "Inherit" },
+    ]);
+
+    expect(outcomes.every((outcome) => outcome.ok)).toBe(true);
+    expect(spawnCalls(harness).map((call) => call.reasoningLevel)).toEqual([
+      "low",
+      "high",
+      "medium",
+    ]);
+  });
+
+  it("rejects an unsupported task thinking level without falling back or blocking later tasks", async () => {
+    const { bb, harness } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [
+      { task: "Too deep", thinking: "xhigh" },
+      { task: "Supported", thinking: "high" },
+    ]);
+
+    expect(outcomes).toMatchObject([
+      {
+        ok: false,
+        task: "Too deep",
+        error: expect.stringMatching(/does not support reasoning "xhigh".*low, medium, high/),
+      },
+      { ok: true },
+    ]);
+    expect(spawnCalls(harness)).toHaveLength(1);
+    expect(spawnCalls(harness)[0]).toMatchObject({ reasoningLevel: "high" });
+  });
+
   it("uses the model's default reasoning when the caller's level is not one the model supports", async () => {
     world.defaults = { ...world.defaults!, reasoningLevel: "xhigh" };
     const { bb, harness } = createBbHost(world);

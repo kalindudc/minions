@@ -38,7 +38,7 @@ Common frontmatter fields:
 | `displayName` | Preferred minion display name |
 | `model` | Default model for this agent |
 | `tools` | Optional tool allowlist |
-| `thinking` | Optional thinking level |
+| `thinking` | Default thinking level; see [`spawn` thinking levels and task overrides](reference.md#spawn) |
 | `steps` | Optional turn limit |
 | `timeout` | Optional timeout in milliseconds (pi sessions only) |
 | `provider`, `reasoning`, `permission`, `environment`, `delegate` | bb-only provider, effort, permission, shared/worktree and depth-limited delegation settings; see [bb persona fields](#bb-persona-fields) |
@@ -77,7 +77,7 @@ bb reads these optional fields when it spawns a persona as a [bb minion](referen
 | Field | Values | Default | Effect in bb |
 |---|---|---|---|
 | `provider` | a bb provider id, such as `codex` or `pi` | the calling thread's provider | Provider that runs the child thread |
-| `reasoning` | `none`, `low`, `medium`, `high`, `xhigh`, `max` | `thinking` mapped to bb levels (`off` becomes `none`, `minimal` becomes `low`), else the caller's level when the minion runs on the caller's provider and the model supports it, else the model's own default level | Reasoning effort; a level the model does not support fails the task |
+| `reasoning` | `none`, `low`, `medium`, `high`, `xhigh`, `max` | `thinking` mapped to bb levels (`off` becomes `none`, `minimal` becomes `low`), else the caller's level when the minion runs on the caller's provider and the model supports it, else the model's own default level | Reasoning effort, overridden by [`tasks[].thinking`](reference.md#spawn-in-bb); a level the model does not support fails the task |
 | `permission` | `accept-edits`, `auto`, `full` | bb's default for child threads | Permission mode, never above the host's ceiling |
 | `environment` | `shared`, `worktree` | `shared` | The caller's checkout, or a new Git worktree from the caller's branch |
 | `delegate` | `true`, `false` | `false` | Whether the minion may spawn minions of its own, at most two levels deep |

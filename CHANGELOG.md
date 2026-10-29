@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-10-29
+
+- feat: add per-task `thinking` to `spawn` in bb and pi, overriding persona settings; bb rejects levels the model does not support. See [reference](docs/reference.md#spawn).
+- fix: plain pi minion sessions now apply the persona's `thinking` instead of ignoring it
 - docs: the README presents minions for both bb and pi, says every bb provider gets the minion tools, and shows the Minions tab, the `[oo]` button and the sidebar goggles in screenshots
 
 ## [0.20.0] - 2026-10-18

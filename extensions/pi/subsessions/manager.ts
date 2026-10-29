@@ -139,6 +139,7 @@ export class SubsessionManager {
     const { session } = await createAgentSession({
       cwd: this.cwd,
       model: sessionModel,
+      thinkingLevel: config.thinking,
       customTools: options.customTools,
       sessionManager,
       settingsManager,

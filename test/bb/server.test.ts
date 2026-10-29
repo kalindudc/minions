@@ -269,6 +269,28 @@ describe("agent tools", () => {
     expect(invalidations(harness)).toContainEqual({ threadId: PARENT_ID });
   });
 
+  it.each([
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+  ])("spawn accepts per-task thinking %s and starts the child with that effort", async (thinking) => {
+    const { harness } = await loadPlugin();
+
+    const result = await harness.behavior.callAgentTool(
+      "spawn",
+      { tasks: [{ task: "Review", model: "claude-x", thinking }] },
+      { threadId: PARENT_ID },
+    );
+
+    expect(result).not.toMatchObject({ isError: true });
+    expect(spawnCalls(harness)[0]).toMatchObject({
+      reasoningLevel: thinking === "off" ? "none" : thinking === "minimal" ? "low" : thinking,
+    });
+  });
+
   it("marks a spawn result as an error when no minion started", async () => {
     const { harness } = await loadPlugin();
 
@@ -289,6 +311,9 @@ describe("agent tools", () => {
     { tasks: [{ task: "   " }] },
     { tasks: [{ task: "x", extra: true }] },
     { tasks: [{ task: "x", environment: "cloud" }] },
+    { tasks: [{ task: "x", thinking: "extreme" }] },
+    { tasks: [{ task: "x", thinking: 123 }] },
+    { tasks: [{ task: "x" }], thinking: "high" },
     { tasks: [{ task: "x" }], model: "gpt" },
   ])("spawn rejects malformed arguments %j before starting anything", async (input) => {
     const { harness } = await loadPlugin();

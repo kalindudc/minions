@@ -3,7 +3,8 @@ export const MINIONS_SKILL = `# pi-minions
 Use minions when independent work can run in isolated foreground agent sessions and you need the result before continuing.
 
 Available surfaces:
-- Use the \`spawn\` tool with a required, non-empty \`tasks\` array. Each item has a required \`task\` and optional \`agent\` and \`model\`. These fields belong inside each item, not at the top level.
+- Use the \`spawn\` tool with a required, non-empty \`tasks\` array. Each item has a required \`task\` and optional \`agent\`, \`model\` and \`thinking\`. These fields belong inside each item, not at the top level.
+- Set \`thinking\` per task to \`off\`, \`minimal\`, \`low\`, \`medium\`, \`high\` or \`xhigh\` to override the persona. When omitted, the persona's thinking level applies, else pi uses its settings default. Pi clamps levels to model capabilities.
 - One item runs a single foreground minion with a single-minion result and display, not a batch wrapper.
 - Two or more items run foreground minions concurrently as a batch with combined results and a batch display.
 - Use \`/spawn <task> [--model <model>]\` to request a single foreground minion from the command line.

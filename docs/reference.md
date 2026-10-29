@@ -14,7 +14,9 @@
 
 ### spawn
 
-`tasks` is the only top-level option. It is required and must be a non-empty array of objects with a required `task` string and optional `agent` and `model` strings. Top-level `task`, `agent`, and `model` options are not supported.
+`tasks` is the only top-level option. It is required and must be a non-empty array of objects with a required `task` string, optional `agent` and `model` strings, and an optional `thinking` level. Top-level `task`, `agent`, `model`, and `thinking` options are not supported.
+
+`thinking` accepts `off`, `minimal`, `low`, `medium`, `high`, or `xhigh` and overrides the persona's thinking level for that task. When omitted in plain pi, the persona's `thinking` applies, else pi uses its settings default. Pi clamps the requested level to the model's capabilities; [bb validates it against the provider catalog](#spawn-in-bb) instead.
 
 - One item runs one foreground minion with a single-minion result and display, not a batch wrapper.
 - Two or more items run concurrently as a batch with a combined result and batch display.
@@ -25,12 +27,12 @@ Single foreground minion:
 spawn({ tasks: [{ task: "Read src/index.ts and summarize it" }] })
 ```
 
-Named agent and model override for one task entry:
+Named agent with model and thinking overrides for one task entry:
 
 ```ts
 spawn({
   tasks: [
-    { task: "Research package files", agent: "researcher", model: "claude-haiku" }
+    { task: "Research package files", agent: "researcher", model: "claude-haiku", thinking: "high" }
   ]
 })
 ```
@@ -92,7 +94,7 @@ When pi-minions is installed as a bb plugin, bb gives these tools to threads of 
 
 | Tool | Parameters | Result |
 |---|---|---|
-| `spawn` | `{ tasks: [{ task, agent?, model?, environment? }] }` | One line per task, returned at once |
+| `spawn` | `{ tasks: [{ task, agent?, model?, thinking?, environment? }] }` | One line per task, returned at once |
 | `list_agents` | `{}` | Personas with their description, provider and model |
 | `list_minions` | `{}` | This thread's minions with status, model and quest progress |
 | `show_minion` | `{ id }` | One minion's status and final answer |
@@ -105,9 +107,10 @@ When pi-minions is installed as a bb plugin, bb gives these tools to threads of 
 - `task` (required): a non-empty, self-contained instruction.
 - `agent`: a persona name from `list_agents`. Omit it for a general-purpose minion.
 - `model`: an exact model id, or a unique suffix after `/`, so `gpt-6-luna` matches `openai/gpt-6-luna`.
+- `thinking`: one of the [thinking levels](#spawn), overriding the persona's effort.
 - `environment`: `shared`, the caller's checkout, or `worktree`, a new managed worktree from the caller's branch. It defaults to the persona's `environment`, then `shared`.
 
-Each minion runs on the persona's `provider` or the caller's provider. Its model is the task's `model`, then the persona's `model`, then the caller's current model, or the provider's default model when the persona names another provider. Its reasoning level is the persona's, else the caller's when the minion runs on the caller's provider and the model supports that level, else the model's default level, so every spawn names one. An unknown persona, a persona whose file was skipped, a model that matches nothing or more than one model, an unsupported reasoning level or a permission above the host ceiling fails only that task, and the error lists the valid choices. See [bb persona fields](agents.md#bb-persona-fields).
+Each minion runs on the persona's `provider` or the caller's provider. Its model is the task's `model`, then the persona's `model`, then the caller's current model, or the provider's default model when the persona names another provider. Its reasoning level is the task's `thinking` mapped to bb levels (`off` becomes `none`, `minimal` becomes `low`, and the other levels keep their names), then the persona's `reasoning` or mapped `thinking`, else the caller's when the minion runs on the caller's provider and the model supports that level, else the model's default level, so every spawn names one. An unknown persona, a persona whose file was skipped, a model that matches nothing or more than one model, an unsupported reasoning level or a permission above the host ceiling fails only that task, and the error lists the valid choices. See [bb persona fields](agents.md#bb-persona-fields).
 
 Each minion gets a name and a personality trait when it starts, and both stay with it. The name is the persona's `displayName`, or otherwise a random name from the built-in pool that no other live minion of the caller uses; a `displayName` another live minion already has gets a four-character suffix, such as `Rex-3f2a`. The thread title starts with the name, and `spawn` and `list_minions` show it beside the persona. The trait is picked at random from a short list, such as cheerful, deadpan or detective. The minion's instructions ask it to write the short remarks it makes between steps in that voice, so anyone watching its thread can tell who is working. They also say the trait never changes what it does, how carefully it checks its work or what it reports, and that its final message to the parent stays plain and complete. Minions started before names existed keep their persona as their label and have no trait.
 
@@ -168,6 +171,6 @@ When pi runs inside bb with this plugin installed, bb supplies the minion tools 
 
 | Type | Key fields |
 |---|---|
-| `AgentConfig` | `name`, `description`, `systemPrompt`, `source`, optional `model`, `tools`, `steps`, `timeout`, and the bb fields `provider`, `reasoning`, `permission`, `environment`, `delegate` |
+| `AgentConfig` | `name`, `description`, `systemPrompt`, `source`, optional `model`, `thinking`, `tools`, `steps`, `timeout`, and the bb fields `provider`, `reasoning`, `permission`, `environment`, `delegate` |
 | `AgentNode` | `id`, `name`, `task`, `status`, `usage`, `activityHistory`, optional `agentName`, `model`, `error` |
 | `SpawnToolDetails` | `id`, `name`, `agentName`, `task`, `status`, `usage`, `finalOutput`, optional `minions` |

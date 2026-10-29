@@ -56,6 +56,12 @@ const taskSchema = z
       .describe(
         "Exact model id, or a unique suffix after '/'. Omit to use the persona or thread model.",
       ),
+    thinking: z
+      .enum(["off", "minimal", "low", "medium", "high", "xhigh"])
+      .optional()
+      .describe(
+        "Thinking level for this minion, overriding the persona. off maps to none; minimal maps to low. Unsupported levels fail the task. Omit to use persona or thread defaults.",
+      ),
     environment: environmentSchema
       .optional()
       .describe(
@@ -195,7 +201,7 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
   bb.agents.registerTool({
     name: "spawn",
     description:
-      "Start one to eight minions as bb child threads of this thread, each with an optional persona, model and shared or worktree environment. Returns at once with one line per task; bb reports each minion to this thread when it completes, fails or needs help.",
+      "Start one to eight minions as bb child threads of this thread, each with an optional persona, model, thinking level and shared or worktree environment. Returns at once with one line per task; bb reports each minion to this thread when it completes, fails or needs help.",
     instructions:
       "spawn returns immediately. NEVER poll list_minions or show_minion while minions run: bb sends each minion's result to this thread on its own.",
     presentation: { label: { pending: "Starting minions", completed: "Started minions" } },

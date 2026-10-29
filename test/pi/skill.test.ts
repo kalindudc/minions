@@ -20,7 +20,7 @@ describe("minions skill", () => {
 
     expect(text).toContain("required, non-empty `tasks` array");
     expect(text).toContain("required `task`");
-    expect(text).toContain("optional `agent` and `model`");
+    expect(text).toContain("optional `agent`, `model` and `thinking`");
     expect(text).toContain("One item");
     expect(text).toContain("Two or more items");
     expect(text).toContain("/spawn <task> [--model <model>]");

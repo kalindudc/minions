@@ -6,7 +6,7 @@ import { defaultMinionTemplate } from "../minions.js";
 import { formatToolCall } from "../render.js";
 import { runMinionSession } from "../spawn.js";
 import type { SubsessionManager } from "../subsessions/manager.js";
-import type { BatchMinionItem } from "../tools/spawn.js";
+import type { BatchMinionItem, SpawnToolParams } from "../tools/spawn.js";
 import type { AgentTree } from "../tree.js";
 import type { BatchCoordinator } from "./batch.js";
 
@@ -31,7 +31,7 @@ function resolveAgentConfig(agentName: string, cwd: string): AgentConfig {
 }
 
 export async function runSingleMinion(opts: {
-  spec: { task: string; agent?: string; model?: string };
+  spec: SpawnToolParams["tasks"][number];
   m: BatchMinionItem;
   isSingleMinion: boolean;
   toolCallId: string;
@@ -67,6 +67,7 @@ export async function runSingleMinion(opts: {
   const config = {
     ...(agentConfig ?? defaultMinionTemplate(m.name)),
     model: spec.model ?? agentConfig?.model,
+    thinking: spec.thinking ?? agentConfig?.thinking,
   };
 
   coordinator.emit(true);

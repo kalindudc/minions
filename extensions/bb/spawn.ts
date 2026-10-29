@@ -8,7 +8,7 @@ import {
   isAllowedPersonaPath,
   skippedPersona,
 } from "../../src/agents.js";
-import type { AgentConfig, PersonaWarning } from "../../src/types.js";
+import type { AgentConfig, PersonaWarning, ThinkingLevel } from "../../src/types.js";
 import { isOwnMinion, MAX_DEPTH, type MinionMetadata, parseMinionMetadata } from "./metadata.js";
 import { personalityLine, pickName, pickTrait } from "./personality.js";
 import { minionNamesInUse } from "./state.js";
@@ -25,6 +25,7 @@ export type SpawnTask = {
   task: string;
   agent?: string;
   model?: string;
+  thinking?: ThinkingLevel;
   environment?: "shared" | "worktree";
 };
 
@@ -122,7 +123,7 @@ export function matchModel(reference: string, models: readonly { id: string }[])
   throw new Error(`Model "${wanted}" is not available. Available: ${available}.`);
 }
 
-const THINKING_REASONING: Record<string, string> = {
+const THINKING_REASONING: Record<ThinkingLevel, string> = {
   off: "none",
   minimal: "low",
   low: "low",
@@ -223,6 +224,7 @@ function chooseModel(
 
 // Always name a level: left out, bb would resolve one itself, including remembered project defaults.
 function chooseReasoning(
+  task: SpawnTask,
   persona: Persona,
   inherited: string | undefined,
   model: CatalogModel,
@@ -230,7 +232,9 @@ function chooseReasoning(
   const supported = model.supportedReasoningEfforts.map((effort) => effort.reasoningEffort);
   const thinking = persona.config?.thinking;
   const requested =
-    persona.config?.reasoning ?? (thinking ? THINKING_REASONING[thinking] : undefined);
+    task.thinking !== undefined
+      ? THINKING_REASONING[task.thinking]
+      : (persona.config?.reasoning ?? (thinking ? THINKING_REASONING[thinking] : undefined));
   if (requested === undefined) {
     return inherited !== undefined && supported.includes(inherited)
       ? inherited
@@ -282,7 +286,7 @@ async function spawnOne(batch: Batch, task: SpawnTask): Promise<SpawnOutcome> {
     providerId === batch.caller.providerId && batch.defaults && !(batch.defaults instanceof Error)
       ? batch.defaults.reasoningLevel
       : undefined;
-  const reasoning = chooseReasoning(persona, inherited, model);
+  const reasoning = chooseReasoning(task, persona, inherited, model);
   const permission = choosePermission(persona, catalog.permissionCeiling);
   const name = pickName(persona.config?.displayName, batch.names);
   batch.names.add(name);

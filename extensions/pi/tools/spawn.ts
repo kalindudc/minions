@@ -31,6 +31,22 @@ const TaskDescriptor = Type.Object({
         "Model for this minion's session, e.g. 'openrouter/z-ai/glm-5.3-flash', 'kimi-coding/k3', or an unambiguous bare model id. Resolved against the model registry; fails loudly if unknown or unauthenticated.",
     }),
   ),
+  thinking: Type.Optional(
+    Type.Union(
+      [
+        Type.Literal("off"),
+        Type.Literal("minimal"),
+        Type.Literal("low"),
+        Type.Literal("medium"),
+        Type.Literal("high"),
+        Type.Literal("xhigh"),
+      ],
+      {
+        description:
+          "Thinking level for this minion, overriding its persona. Omit to use the persona's thinking level or pi's settings default. Pi clamps levels to model capabilities.",
+      },
+    ),
+  ),
 });
 
 export const SpawnToolParams = Type.Object(
@@ -96,7 +112,7 @@ function resolveAgentConfig(agentName: string, cwd: string): AgentConfig {
 }
 
 async function executeSpawn(
-  specs: Array<{ task: string; agent?: string; model?: string }>,
+  specs: SpawnToolParams["tasks"],
   toolCallId: string,
   tree: AgentTree,
   pi: ExtensionAPI,

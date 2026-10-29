@@ -18,7 +18,7 @@ In bb, a minion is a child thread of the current thread. `spawn` creates the thr
 | Tool | Use |
 | --- | --- |
 | `list_agents` | List the personas you can name in a task's `agent` field. |
-| `spawn` | Start one to eight minions: `{ "tasks": [{ "task": "...", "agent": "...", "model": "...", "environment": "shared" }] }`. Only `task` is required. |
+| `spawn` | Start one to eight minions: `{ "tasks": [{ "task": "...", "agent": "...", "model": "...", "thinking": "high", "environment": "shared" }] }`. Only `task` is required. |
 | `list_minions` | List this thread's minions with their status, model and quest progress. |
 | `show_minion` | Read one minion's status and full final answer: `{ "id": "<minion thread id>" }`. |
 | `halt` | Stop one minion with `{ "id": "<minion thread id>" }`, or every running minion with `{ "id": "all" }`. |
@@ -27,7 +27,7 @@ In bb, a minion is a child thread of the current thread. `spawn` creates the thr
 
 1. Run `list_agents` when you are unsure which personas exist. Omit `agent` to start a general-purpose minion.
 2. Write each `task` so it stands alone. A minion has none of your conversation, so include file paths, constraints and the shape of the answer you want.
-3. Leave `model` out to use the persona's model or this thread's model. A `model` must be an exact model id or a unique suffix after `/`.
+3. Leave `model` out to use the persona's model or this thread's model. A `model` must be an exact model id or a unique suffix after `/`. Set `thinking` per task to `off`, `minimal`, `low`, `medium`, `high` or `xhigh` to override the persona's effort. `off` maps to bb's `none`, and `minimal` to `low`; unsupported levels fail that task. Omit it to use the persona's effort, then this thread's level if supported on the same provider, else the model's default.
 4. Use `environment: "worktree"` only when a minion edits files that other work also touches. The default, `shared`, works in this thread's checkout.
 5. Call `spawn` once with every independent task. Read the line it returns for each task: it names the minion's thread id and model, or the error for that task alone. Fix and retry only the failed tasks.
 6. Continue with other work, or end your turn. NEVER poll `list_minions` or `show_minion` while you wait: bb reports each minion to this thread on its own.

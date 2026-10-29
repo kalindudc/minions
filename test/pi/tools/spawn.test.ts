@@ -51,6 +51,9 @@ describe("spawn input contract", () => {
   it.each([
     { tasks: [{ task: "summarize" }] },
     { tasks: [{ task: "find auth", agent: "scout", model: "haiku" }] },
+    ...(["off", "minimal", "low", "medium", "high", "xhigh"] as const).map((thinking) => ({
+      tasks: [{ task: "think", thinking }],
+    })),
     { tasks: [{ task: "one" }, { task: "two", agent: "scout" }] },
   ])("accepts task descriptors with per-item options: %j", (params) => {
     expect(Value.Check(SpawnToolParams, params)).toBe(true);
@@ -66,6 +69,9 @@ describe("spawn input contract", () => {
     { tasks: [{ task: 123 }] },
     { tasks: [{ task: "work", agent: 123 }] },
     { tasks: [{ task: "work", model: 123 }] },
+    { tasks: [{ task: "work", thinking: "extreme" }] },
+    { tasks: [{ task: "work", thinking: 123 }] },
+    { thinking: "high", tasks: [{ task: "work" }] },
     { task: "legacy", tasks: [{ task: "work" }] },
     { agent: "scout", tasks: [{ task: "work" }] },
     { model: "haiku", tasks: [{ task: "work" }] },
@@ -113,7 +119,7 @@ describe("foreground delegation", () => {
     writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({ "pi-minions": baseConfig }));
     writeFileSync(
       join(cwd, ".pi", "agents", "scout.md"),
-      "---\nname: scout\ndescription: Fast recon\nmodel: scout-default\n---\nYou are a scout.\n",
+      "---\nname: scout\ndescription: Fast recon\nmodel: scout-default\nthinking: medium\n---\nYou are a scout.\n",
     );
     vi.mocked(createAgentSession).mockImplementation(
       async () =>
@@ -209,6 +215,50 @@ describe("foreground delegation", () => {
       expect(createAgentSession).toHaveBeenCalledWith(
         expect.objectContaining({ model: expect.objectContaining({ id: "haiku" }) }),
       );
+    });
+
+    it.each([
+      [undefined, "high", "high"],
+      [undefined, "off", "off"],
+      [undefined, undefined, undefined],
+      ["scout", "xhigh", "xhigh"],
+      ["scout", undefined, "medium"],
+    ] as const)("uses task thinking before persona thinking for agent %s and level %s", async (agent, thinking, expected) => {
+      const { tree, pi, ctx, subsessionManager } = createDeps();
+
+      await spawn(tree, pi, subsessionManager)(
+        "tc",
+        { tasks: [{ task: "Think", agent, thinking }] },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      expect(createAgentSession).toHaveBeenCalledWith(
+        expect.objectContaining({ thinkingLevel: expected }),
+      );
+    });
+
+    it("keeps each batch minion's thinking level separate", async () => {
+      const { tree, pi, ctx, subsessionManager } = createDeps();
+
+      await spawn(tree, pi, subsessionManager)(
+        "tc",
+        {
+          tasks: [
+            { task: "Deep review", thinking: "high" },
+            { task: "Quick scan", thinking: "low" },
+            { task: "Persona default", agent: "scout" },
+          ],
+        },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      expect(
+        vi.mocked(createAgentSession).mock.calls.map(([options]) => options?.thinkingLevel),
+      ).toEqual(["high", "low", "medium"]);
     });
 
     it("reports available agents without starting a minion when the named agent is unknown", async () => {
