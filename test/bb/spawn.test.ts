@@ -178,6 +178,101 @@ describe("spawning minions as bb child threads", () => {
     });
   });
 
+  it("names a minion with the task's name instead of the persona's displayName", async () => {
+    const { bb, harness } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [
+      { task: "Live test", agent: "researcher", name: "Vera" },
+    ]);
+
+    expect(outcomes[0]).toMatchObject({ ok: true, name: "Vera", persona: "researcher" });
+    expect(spawnCalls(harness)[0]).toMatchObject({
+      title: "Vera · Live test",
+      pluginMetadata: { persona: "researcher", name: "Vera" },
+    });
+  });
+
+  it("fails only the task whose name a live minion or an earlier task already has", async () => {
+    addMinion(world, "th_vera", { metadata: { name: "Vera" } });
+    const { bb, harness } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [
+      { task: "One", name: "Vera" },
+      { task: "Two", name: "Ada" },
+      { task: "Three", name: "Ada" },
+    ]);
+
+    expect(outcomes).toEqual([
+      { ok: false, task: "One", error: expect.stringContaining('"Vera" is already taken') },
+      expect.objectContaining({ ok: true, name: "Ada" }),
+      { ok: false, task: "Three", error: expect.stringContaining('"Ada" is already taken') },
+    ]);
+    expect(spawnCalls(harness).map((call) => call.title)).toEqual(["Ada · Two"]);
+  });
+
+  it("matches a requested name against live minions whatever its case", async () => {
+    addMinion(world, "th_vera", { metadata: { name: "Vera" } });
+    const { bb } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [{ task: "One", name: "vera" }]);
+
+    expect(outcomes[0]).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("already taken"),
+    });
+  });
+
+  it("keeps a later task's requested name free from earlier random and displayName picks", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { bb } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [
+      { task: "One" },
+      { task: "Two", agent: "researcher" },
+      { task: "Three", name: "kevin" },
+      { task: "Four", name: "Rex" },
+    ]);
+
+    const names = outcomes.map((outcome) => (outcome.ok ? outcome.name : outcome.error));
+    expect(names[0]).toBe("Stuart");
+    expect(names[1]).toMatch(/^Rex-[0-9a-f]{4}$/);
+    expect(names.slice(2)).toEqual(["kevin", "Rex"]);
+  });
+
+  it("frees the name of a task that failed to start for a later task", async () => {
+    world.environment = { ...world.environment!, isGitRepo: false };
+    const { bb } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [
+      { task: "One", name: "Vera", environment: "worktree" },
+      { task: "Two", name: "Vera" },
+    ]);
+
+    expect(outcomes.map((outcome) => outcome.ok)).toEqual([false, true]);
+    expect(outcomes[1]).toMatchObject({ name: "Vera" });
+  });
+
+  it("never gives the same requested name to minions from concurrent calls", async () => {
+    const { bb, harness } = createBbHost(world);
+
+    const outcomes = await Promise.all([
+      spawnBatch(bb, PARENT_ID, [{ task: "One", name: "Vera" }]),
+      spawnBatch(bb, PARENT_ID, [{ task: "Two", name: "Vera" }]),
+    ]);
+
+    expect(outcomes.flat().map((outcome) => outcome.ok)).toEqual([true, false]);
+    expect(spawnCalls(harness).map((call) => call.title)).toEqual(["Vera · One"]);
+  });
+
+  it("lets a task reuse an archived minion's name", async () => {
+    addMinion(world, "th_vera", { metadata: { name: "Vera" }, thread: { archivedAt: 1 } });
+    const { bb } = createBbHost(world);
+
+    const outcomes = await spawnBatch(bb, PARENT_ID, [{ task: "One", name: "Vera" }]);
+
+    expect(outcomes[0]).toMatchObject({ ok: true, name: "Vera" });
+  });
+
   it("discovers project personas from the caller's checkout", async () => {
     const { bb, harness } = createBbHost(world);
 

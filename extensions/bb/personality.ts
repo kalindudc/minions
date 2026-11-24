@@ -28,7 +28,7 @@ function withFreeSuffix(base: string, taken: ReadonlySet<string>): string {
   let candidate: string;
   do {
     candidate = `${base}-${randomUUID().slice(0, 4)}`;
-  } while (taken.has(candidate));
+  } while (taken.has(candidate.toLocaleLowerCase()));
   return candidate;
 }
 
@@ -37,12 +37,14 @@ export function pickTrait(): string {
 }
 
 // A persona's displayName is raw YAML, so anything but a non-empty string counts as no preference.
-export function pickName(preferred: string | undefined, taken: ReadonlySet<string>): string {
+// Names match whatever their case, so "vera" and "Vera" never both appear.
+export function pickName(preferred: string | undefined, inUse: ReadonlySet<string>): string {
+  const taken = new Set([...inUse].map((name) => name.toLocaleLowerCase()));
   if (typeof preferred === "string" && preferred !== "") {
-    return taken.has(preferred) ? withFreeSuffix(preferred, taken) : preferred;
+    return taken.has(preferred.toLocaleLowerCase()) ? withFreeSuffix(preferred, taken) : preferred;
   }
   const names = DEFAULT_MINION_NAMES.map(capitalise);
-  const free = names.filter((name) => !taken.has(name));
+  const free = names.filter((name) => !taken.has(name.toLocaleLowerCase()));
   return free.length > 0 ? pick(free) : withFreeSuffix(pick(names), taken);
 }
 

@@ -32,6 +32,7 @@ const DESCRIPTION_LIMIT = 300;
 // bb skips the parent notice when a child's turn was stopped by hand.
 const STOPPED_NOTE = "bb sends no report for a stopped minion.";
 const TASK_LIMIT = 100;
+const NAME_LIMIT = 32;
 
 const threadIdSchema = z.string().trim().min(1);
 const environmentSchema = z.enum(["shared", "worktree"]);
@@ -48,6 +49,17 @@ const taskSchema = z
       .min(1)
       .optional()
       .describe("Persona name from list_agents. Omit for a general-purpose minion."),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(NAME_LIMIT)
+      .regex(/^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+$/u)
+      .regex(/[^\p{Z}\p{M}]/u)
+      .optional()
+      .describe(
+        "The minion's display name, unique among this thread's live minions whatever its case. Omit to let bb name it, and NEVER name the minion inside the task text: the spawn result reports its actual name.",
+      ),
     model: z
       .string()
       .trim()
@@ -201,7 +213,7 @@ export default async function plugin(bb: BbPluginApi): Promise<void> {
   bb.agents.registerTool({
     name: "spawn",
     description:
-      "Start one to eight minions as bb child threads of this thread, each with an optional persona, model, thinking level and shared or worktree environment. Returns at once with one line per task; bb reports each minion to this thread when it completes, fails or needs help.",
+      "Start one to eight minions as bb child threads of this thread, each with an optional persona, name, model, thinking level and shared or worktree environment. Returns at once with one line per task; bb reports each minion to this thread when it completes, fails or needs help.",
     instructions:
       "spawn returns immediately. NEVER poll list_minions or show_minion while minions run: bb sends each minion's result to this thread on its own.",
     presentation: { label: { pending: "Starting minions", completed: "Started minions" } },

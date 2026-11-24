@@ -24,6 +24,7 @@ const FINAL_ANSWER_REQUEST =
 export type SpawnTask = {
   task: string;
   agent?: string;
+  name?: string;
   model?: string;
   thinking?: ThinkingLevel;
   environment?: "shared" | "worktree";
@@ -147,7 +148,31 @@ type Batch = {
   batchId: string;
   depth: number;
   names: Set<string>;
+  requested: Set<string>;
 };
+
+function nameKey(name: string): string {
+  return name.toLocaleLowerCase();
+}
+
+// One spawn call per parent at a time: each reads the names in use before it picks, so two
+// concurrent calls must not both hand out the same name.
+const parentQueues = new Map<string, Promise<void>>();
+
+async function oneAtATime<T>(parentThreadId: string, run: () => Promise<T>): Promise<T> {
+  const previous = parentQueues.get(parentThreadId) ?? Promise.resolve();
+  const result = previous.then(run);
+  const done = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  parentQueues.set(parentThreadId, done);
+  try {
+    return await result;
+  } finally {
+    if (parentQueues.get(parentThreadId) === done) parentQueues.delete(parentThreadId);
+  }
+}
 
 function resolvePersona(
   agent: string | undefined,
@@ -288,8 +313,14 @@ async function spawnOne(batch: Batch, task: SpawnTask): Promise<SpawnOutcome> {
       : undefined;
   const reasoning = chooseReasoning(task, persona, inherited, model);
   const permission = choosePermission(persona, catalog.permissionCeiling);
-  const name = pickName(persona.config?.displayName, batch.names);
-  batch.names.add(name);
+  if (task.name !== undefined && batch.names.has(nameKey(task.name))) {
+    throw new Error(
+      `The name "${task.name}" is already taken by another of this thread's minions; choose another or omit name.`,
+    );
+  }
+  const name =
+    task.name ??
+    pickName(persona.config?.displayName, new Set([...batch.names, ...batch.requested]));
   const identity = { persona: persona.name, name, trait: pickTrait() };
   const environment = task.environment ?? persona.config?.environment ?? "shared";
   // configure checks the persona path against the minion's own environment, and a worktree minion
@@ -323,6 +354,7 @@ async function spawnOne(batch: Batch, task: SpawnTask): Promise<SpawnOutcome> {
     prompt: inPrompt ? `${persona.body}\n\n${request}` : request,
     pluginMetadata: metadata,
   });
+  batch.names.add(nameKey(name));
   return { ok: true, id: child.id, name, persona: persona.name, model: model.id, environment };
 }
 
@@ -356,6 +388,15 @@ export async function spawnBatch(
   if (tasks.length < 1 || tasks.length > MAX_TASKS) {
     throw new Error(`Pass one to eight tasks; got ${tasks.length}.`);
   }
+  return oneAtATime(callerThreadId, () => spawnTasks(bb, callerThreadId, tasks, signal));
+}
+
+async function spawnTasks(
+  bb: Bb,
+  callerThreadId: string,
+  tasks: SpawnTask[],
+  signal?: AbortSignal,
+): Promise<SpawnOutcome[]> {
   const caller = await bb.sdk.threads.get({ threadId: callerThreadId });
   if (!caller.canSpawnChild)
     throw new Error("bb does not allow this thread to spawn child threads.");
@@ -363,7 +404,7 @@ export async function spawnBatch(
   if (!caller.environmentId) throw new Error("This thread has no environment to start minions in.");
 
   const environment = await bb.sdk.environments.get({ environmentId: caller.environmentId });
-  const names = await minionNamesInUse(bb, caller.id);
+  const names = new Set([...(await minionNamesInUse(bb, caller.id))].map(nameKey));
   let defaults: ExecutionDefaults | Error;
   try {
     defaults = await bb.sdk.threads.defaultExecutionOptions({ threadId: callerThreadId });
@@ -391,6 +432,10 @@ export async function spawnBatch(
     batchId: randomUUID().slice(0, 8),
     depth,
     names,
+    // Random and displayName picks steer clear of names later tasks ask for.
+    requested: new Set(
+      tasks.flatMap((task) => (task.name === undefined ? [] : [nameKey(task.name)])),
+    ),
   };
   const outcomes: SpawnOutcome[] = [];
   for (const task of tasks) {

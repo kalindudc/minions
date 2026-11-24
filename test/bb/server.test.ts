@@ -291,6 +291,25 @@ describe("agent tools", () => {
     });
   });
 
+  it("spawn starts minions under the names the tasks give them, up to 32 characters", async () => {
+    const { harness } = await loadPlugin();
+
+    const result = await harness.behavior.callAgentTool(
+      "spawn",
+      {
+        tasks: [
+          { task: "Live test", name: "  Vera " },
+          { task: "Long", name: "V".repeat(32) },
+        ],
+      },
+      { threadId: PARENT_ID },
+    );
+
+    expect(resultText(result)).toContain("- Vera (minion): thread th_child_1");
+    expect(resultText(result)).toContain(`- ${"V".repeat(32)} (minion): thread th_child_2`);
+    expect(spawnCalls(harness)[0]).toMatchObject({ pluginMetadata: { name: "Vera" } });
+  });
+
   it("marks a spawn result as an error when no minion started", async () => {
     const { harness } = await loadPlugin();
 
@@ -313,6 +332,13 @@ describe("agent tools", () => {
     { tasks: [{ task: "x", environment: "cloud" }] },
     { tasks: [{ task: "x", thinking: "extreme" }] },
     { tasks: [{ task: "x", thinking: 123 }] },
+    { tasks: [{ task: "x", name: "   " }] },
+    { tasks: [{ task: "x", name: "Ve\nra" }] },
+    { tasks: [{ task: "x", name: "V".repeat(33) }] },
+    { tasks: [{ task: "x", name: "Ve\u2028ra" }] },
+    { tasks: [{ task: "x", name: "Vera\u200b" }] },
+    { tasks: [{ task: "x", name: "\u202eare V" }] },
+    { tasks: [{ task: "x", name: "\u0301" }] },
     { tasks: [{ task: "x" }], thinking: "high" },
     { tasks: [{ task: "x" }], model: "gpt" },
   ])("spawn rejects malformed arguments %j before starting anything", async (input) => {

@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-24
+
+- feat: add an optional per-task `name` to `spawn` in bb, so a lead can choose a minion's name instead of writing one into the task text; a name another live minion of the thread already has fails only that task. See [reference](docs/reference.md#spawn-in-bb).
+- fix: bb minion names now match whatever their case, and concurrent `spawn` calls from one thread no longer hand two minions the same name
+
 ## [0.20.1] - 2026-10-29
 
 - feat: add per-task `thinking` to `spawn` in bb and pi, overriding persona settings; bb rejects levels the model does not support. See [reference](docs/reference.md#spawn).
